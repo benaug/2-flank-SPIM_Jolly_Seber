@@ -708,6 +708,8 @@ IDLSampler <- nimbleFunction(
     M <- control$M
     J <- control$J
     K <- control$K
+    y.L.start <- control$y.L.start
+    y.L.stop <- control$y.L.stop
     prop.scale <- control$prop.scale #can scale the distance proposal, but a value of 1 should be a good choice.
     calcNodes <- model$getDependencies(target)
   },
@@ -720,87 +722,114 @@ IDLSampler <- nimbleFunction(
       ID.L <- model$ID.L
       pd.L <- model$pd.L
       sigma <- model$sigma
-      # browser()
       #how to propose with z's not consistent? Just propose them that way and reject for now
       ll.y.L <- model$logProb_y.L.true
       ll.y.L.cand <- ll.y.L
+      
+      # z.start <- model$z.start
+      # z.stop <- model$z.stop
+      
       for(l in (n.fixed+1):n.L){
         y.L.true.cand <- y.L.true
         this.i <- ID.L[l]
-        #select an individual to swap it to
-        d2 <- (s[this.i,1]-s[,1])^2+(s[this.i,2]-s[,2])^2
-        propprobs <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal. must reference index for sigma
-        propprobs[this.i] <- 0 #don't choose focal
-        propprobs[z.super==0] <- 0 #must select an individual with z.super==1
-        if(n.fixed>0){
-          propprobs[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+        #other flanks we can't swap in to ID.L[l]
+        conflict.idx <- which(y.L.start<model$z.start[this.i]|y.L.stop>model$z.stop[this.i])
+        #convert to their individual number these flanks currently assigned to
+        conflict.idx2 <- ID.L[conflict.idx]
+        #individuals we can swap the focal flank to
+        valid.swap <- 1*(model$z.start<=y.L.start[l]&model$z.stop>=y.L.stop[l]&model$z.super==1)
+        #remove conflicts from above
+        for(l2 in 1:length(conflict.idx2)){
+          valid.swap[conflict.idx2[l2]] <- 0
         }
-        propprobs <- propprobs/sum(propprobs)
-        cand.i <- rcat(1,prob=propprobs)
-        
-        cand.ID.idx <- which(ID.L==cand.i)#which ID.L index is this individual. Will be empty if not in ID.L
-        for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
-          for(j in 1:J[g]){
-            y.L.true.cand[this.i,g,j] <- y.L.true[cand.i,g,j]
-            y.L.true.cand[cand.i,g,j] <- y.L.true[this.i,g,j]
+        if(n.fixed>0){
+          valid.swap[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+        }
+        valid.swap[this.i] <- 0 #don't choose focal
+        propprobs <- rep(0,M)
+        for(i in 1:M){
+          if(valid.swap[i]){
+            d2 <- (s[this.i,1]-s[i,1])^2+(s[this.i,2]-s[i,2])^2
+            propprobs[i] <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal. must reference index for sigma
           }
         }
-        #update ll.y.L
-        for(g in 1:n.year){
-          ll.y.L.cand[this.i,g,1] <- dBernoulliVectorSingle(y.L.true.cand[this.i,g,1:J[g]],
+        sum.propprobs <- sum(propprobs)
+        if(sum.propprobs>0){ #prereject if no valid swaps
+          propprobs <- propprobs/sum.propprobs
+          cand.i <- rcat(1,prob=propprobs)
+          
+          cand.ID.idx <- which(ID.L==cand.i)#which ID.L index is this individual. Will be empty if not in ID.L
+          for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
+            for(j in 1:J[g]){
+              y.L.true.cand[this.i,g,j] <- y.L.true[cand.i,g,j]
+              y.L.true.cand[cand.i,g,j] <- y.L.true[this.i,g,j]
+            }
+          }
+          #update ll.y.L
+          for(g in 1:n.year){
+            ll.y.L.cand[this.i,g,1] <- dBernoulliVectorSingle(y.L.true.cand[this.i,g,1:J[g]],
                                                               pd.L[this.i,g,1:J[g]],
                                                               K2D=K2D[g,1:J[g]],
                                                               J.cams=J.cams[g,1:J[g]],
                                                               z=z[this.i,g],
                                                               z.super=z.super[this.i],log=TRUE)
-          ll.y.L.cand[cand.i,g,1] <- dBernoulliVectorSingle(y.L.true.cand[cand.i,g,1:J[g]],
+            ll.y.L.cand[cand.i,g,1] <- dBernoulliVectorSingle(y.L.true.cand[cand.i,g,1:J[g]],
                                                               pd.L[cand.i,g,1:J[g]],
                                                               K2D=K2D[g,1:J[g]],
                                                               J.cams=J.cams[g,1:J[g]],
                                                               z=z[cand.i,g],
                                                               z.super=z.super[cand.i],log=TRUE)
-        }
-        
-        # browser()
-        # (ll.y.L.cand[this.i,,1])
-        # (ll.y.L.cand[cand.i,,1])
-        # z[this.i,]
-        # z[cand.i,]
-        
-        #calculate backwards proposal probs
-        d2 <- (s[cand.i,1]-s[,1])^2+(s[cand.i,2]-s[,2])^2
-        backprobs <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal
-        backprobs[cand.i] <- 0 #don't choose focal
-        backprobs[z.super==0] <- 0 #must select an individual with z.super==1
-        if(n.fixed>0){
-          backprobs[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
-        }
-        backprobs <- backprobs/sum(backprobs)
-        # lp_initial <- sum(ll.y.L[this.i,,]) + sum(ll.y.L[cand.i,,])
-        # lp_proposed <- sum(ll.y.L.cand[this.i,,]) + sum(ll.y.L.cand[cand.i,,])
-        #"can't do math in >2 dimensions" loop
-        lp_initial <- lp_proposed <- 0
-        for(g in 1:n.year){
-          lp_initial <- lp_initial + ll.y.L[this.i,g,1] + ll.y.L[cand.i,g,1]
-          lp_proposed <- lp_proposed + ll.y.L.cand[this.i,g,1] + ll.y.L.cand[cand.i,g,1]
-        }
-        log_MH_ratio <- (lp_proposed+log(backprobs[this.i])) - (lp_initial+log(propprobs[cand.i]))
-        accept <- decide(log_MH_ratio)
-        if(accept){
-          for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
-            for(j in 1:J[g]){
-              y.L.true[this.i,g,j] <- y.L.true.cand[this.i,g,j]
-              y.L.true[cand.i,g,j] <- y.L.true.cand[cand.i,g,j]
-            }
-            ll.y.L[this.i,g,1] <- ll.y.L.cand[this.i,g,1]
-            ll.y.L[cand.i,g,1] <- ll.y.L.cand[cand.i,g,1]
           }
-          #swap flank indices
-          ID.L[l] <- cand.i
-          #if cand.i was in ID.L, update this ID index
-          tmp <- nimDim(cand.ID.idx)[1]
-          if(tmp>0){
-            ID.L[cand.ID.idx] <- this.i
+          
+          #calculate backwards proposal probs
+          #other flanks we can't swap in to cand.i
+          conflict.idx <- which(y.L.start<model$z.start[cand.i]|y.L.stop>model$z.stop[cand.i])
+          #convert to their individual number these flanks currently assigned to
+          conflict.idx2 <- ID.L[conflict.idx]
+          #individuals we can swap the focal flank to
+          valid.swap <- 1*(model$z.start<=y.L.start[l]&model$z.stop>=y.L.stop[l]&model$z.super==1)
+          #remove conflicts from above
+          for(l2 in 1:length(conflict.idx2)){
+            valid.swap[conflict.idx2[l2]] <- 0
+          }
+          if(n.fixed>0){
+            valid.swap[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+          }
+          valid.swap[cand.i] <- 0 #don't choose focal
+          backprobs <- rep(0,M)
+          for(i in 1:M){
+            if(valid.swap[i]){
+              d2 <- (s[cand.i,1]-s[i,1])^2+(s[cand.i,2]-s[i,2])^2
+              backprobs[i] <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal. must reference index for sigma
+            }
+          }
+          backprobs <- backprobs/sum(backprobs)
+          # lp_initial <- sum(ll.y.L[this.i,,]) + sum(ll.y.L[cand.i,,])
+          # lp_proposed <- sum(ll.y.L.cand[this.i,,]) + sum(ll.y.L.cand[cand.i,,])
+          #"can't do math in >2 dimensions" loop
+          lp_initial <- lp_proposed <- 0
+          for(g in 1:n.year){
+            lp_initial <- lp_initial + ll.y.L[this.i,g,1] + ll.y.L[cand.i,g,1]
+            lp_proposed <- lp_proposed + ll.y.L.cand[this.i,g,1] + ll.y.L.cand[cand.i,g,1]
+          }
+          log_MH_ratio <- (lp_proposed+log(backprobs[this.i])) - (lp_initial+log(propprobs[cand.i]))
+          accept <- decide(log_MH_ratio)
+          if(accept){
+            for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
+              for(j in 1:J[g]){
+                y.L.true[this.i,g,j] <- y.L.true.cand[this.i,g,j]
+                y.L.true[cand.i,g,j] <- y.L.true.cand[cand.i,g,j]
+              }
+              ll.y.L[this.i,g,1] <- ll.y.L.cand[this.i,g,1]
+              ll.y.L[cand.i,g,1] <- ll.y.L.cand[cand.i,g,1]
+            }
+            #swap flank indices
+            ID.L[l] <- cand.i
+            #if cand.i was in ID.L, update this ID index
+            tmp <- nimDim(cand.ID.idx)[1]
+            if(tmp>0){
+              ID.L[cand.ID.idx] <- this.i
+            }
           }
         }
       }
@@ -827,6 +856,8 @@ IDRSampler <- nimbleFunction(
     M <- control$M
     J <- control$J
     K <- control$K
+    y.R.start <- control$y.R.start
+    y.R.stop <- control$y.R.stop
     prop.scale <- control$prop.scale #can scale the distance proposal, but a value of 1 should be a good choice.
     calcNodes <- model$getDependencies(target)
   },
@@ -845,73 +876,103 @@ IDRSampler <- nimbleFunction(
       for(l in (n.fixed+1):n.R){
         y.R.true.cand <- y.R.true
         this.i <- ID.R[l]
-        #select an individual to swap it to
-        d2 <- (s[this.i,1]-s[,1])^2+(s[this.i,2]-s[,2])^2
-        propprobs <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal
-        propprobs[this.i] <- 0 #don't choose focal
-        propprobs[z.super==0] <- 0 #must select an individual with z.super==1
-        if(n.fixed>0){
-          propprobs[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+        #other flanks we can't swap in to ID.L[l]
+        conflict.idx <- which(y.R.start<model$z.start[this.i]|y.R.stop>model$z.stop[this.i])
+        #convert to their individual number these flanks currently assigned to
+        conflict.idx2 <- ID.R[conflict.idx]
+        #individuals we can swap the focal flank to
+        valid.swap <- 1*(model$z.start<=y.R.start[l]&model$z.stop>=y.R.stop[l]&model$z.super==1)
+        #remove conflicts from above
+        for(l2 in 1:length(conflict.idx2)){
+          valid.swap[conflict.idx2[l2]] <- 0
         }
-        propprobs <- propprobs/sum(propprobs)
-        cand.i <- rcat(1,propprobs)
-        cand.ID.idx <- which(ID.R==cand.i)#which ID.R index is this individual. Will be empty if not in ID.R
-        for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
-          for(j in 1:J[g]){
-            y.R.true.cand[this.i,g,j] <- y.R.true[cand.i,g,j]
-            y.R.true.cand[cand.i,g,j] <- y.R.true[this.i,g,j]
+        if(n.fixed>0){
+          valid.swap[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+        }
+        valid.swap[this.i] <- 0 #don't choose focal
+        propprobs <- rep(0,M)
+        for(i in 1:M){
+          if(valid.swap[i]){
+            d2 <- (s[this.i,1]-s[i,1])^2+(s[this.i,2]-s[i,2])^2
+            propprobs[i] <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal. must reference index for sigma
           }
         }
-        #update ll.y.R
-        for(g in 1:n.year){
-          ll.y.R.cand[this.i,g,1] <- dBernoulliVectorSingle(y.R.true.cand[this.i,g,1:J[g]],
+        sum.propprobs <- sum(propprobs)
+        if(sum.propprobs>0){ #prereject if no valid swaps
+          propprobs <- propprobs/sum.propprobs
+          cand.i <- rcat(1,prob=propprobs)
+          cand.ID.idx <- which(ID.R==cand.i)#which ID.R index is this individual. Will be empty if not in ID.R
+          for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
+            for(j in 1:J[g]){
+              y.R.true.cand[this.i,g,j] <- y.R.true[cand.i,g,j]
+              y.R.true.cand[cand.i,g,j] <- y.R.true[this.i,g,j]
+            }
+          }
+          #update ll.y.R
+          for(g in 1:n.year){
+            ll.y.R.cand[this.i,g,1] <- dBernoulliVectorSingle(y.R.true.cand[this.i,g,1:J[g]],
                                                               pd.R[this.i,g,1:J[g]],
                                                               K2D=K2D[g,1:J[g]],
                                                               J.cams=J.cams[g,1:J[g]],
                                                               z=z[this.i,g],
                                                               z.super=z.super[this.i],log=TRUE)
-          ll.y.R.cand[cand.i,g,1] <- dBernoulliVectorSingle(y.R.true.cand[cand.i,g,1:J[g]],
+            ll.y.R.cand[cand.i,g,1] <- dBernoulliVectorSingle(y.R.true.cand[cand.i,g,1:J[g]],
                                                               pd.R[cand.i,g,1:J[g]],
                                                               K2D=K2D[g,1:J[g]],
                                                               J.cams=J.cams[g,1:J[g]],
                                                               z=z[cand.i,g],
                                                               z.super=z.super[cand.i],log=TRUE)
-        }
-        #calculate backwards proposal probs
-        d2 <- (s[cand.i,1]-s[,1])^2+(s[cand.i,2]-s[,2])^2
-        backprobs <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal
-        backprobs[cand.i] <- 0 #don't choose focal
-        backprobs[z.super==0] <- 0 #must select an individual with z.super==1
-        if(n.fixed>0){
-          backprobs[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
-        }
-        backprobs <- backprobs/sum(backprobs)
-        # lp_initial <- sum(ll.y.R[this.i,,])+sum(ll.y.R[cand.i,,])
-        # lp_proposed <- sum(ll.y.R.cand[this.i,,])+sum(ll.y.R.cand[cand.i,,])
-        #"can't do math in >2 dimensions" loop
-        lp_initial <- lp_proposed <- 0
-        for(g in 1:n.year){
-          lp_initial <- lp_initial + ll.y.R[this.i,g,1] + ll.y.R[cand.i,g,1]
-          lp_proposed <- lp_proposed + ll.y.R.cand[this.i,g,1] + ll.y.R.cand[cand.i,g,1]
-        }
-        log_MH_ratio <- (lp_proposed+log(backprobs[this.i])) - (lp_initial+log(propprobs[cand.i]))
-        accept <- decide(log_MH_ratio)
-        
-        if(accept){
-          for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
-            for(j in 1:J[g]){
-              y.R.true[this.i,g,j] <- y.R.true.cand[this.i,g,j]
-              y.R.true[cand.i,g,j] <- y.R.true.cand[cand.i,g,j]
-            }
-            ll.y.R[this.i,g,1] <- ll.y.R.cand[this.i,g,1]
-            ll.y.R[cand.i,g,1] <- ll.y.R.cand[cand.i,g,1]
           }
-          #swap flank indices
-          ID.R[l] <- cand.i
-          #if cand.i was in ID.R, update this ID index
-          tmp <- nimDim(cand.ID.idx)[1]
-          if(tmp>0){
-            ID.R[cand.ID.idx] <- this.i
+          #calculate backwards proposal probs
+          #other flanks we can't swap in to cand.i
+          conflict.idx <- which(y.R.start<model$z.start[cand.i]|y.R.stop>model$z.stop[cand.i])
+          #convert to their individual number these flanks currently assigned to
+          conflict.idx2 <- ID.R[conflict.idx]
+          #individuals we can swap the focal flank to
+          valid.swap <- 1*(model$z.start<=y.R.start[l]&model$z.stop>=y.R.stop[l]&model$z.super==1)
+          #remove conflicts from above
+          for(l2 in 1:length(conflict.idx2)){
+            valid.swap[conflict.idx2[l2]] <- 0
+          }
+          if(n.fixed>0){
+            valid.swap[1:n.fixed] <- 0 #cannot select an individual with fixed flanks
+          }
+          valid.swap[cand.i] <- 0 #don't choose focal
+          backprobs <- rep(0,M)
+          for(i in 1:M){
+            if(valid.swap[i]){
+              d2 <- (s[cand.i,1]-s[i,1])^2+(s[cand.i,2]-s[i,2])^2
+              backprobs[i] <- exp(-d2/(2*(prop.scale*sigma[1])^2)) #distance-based proposal. must reference index for sigma
+            }
+          }
+          backprobs <- backprobs/sum(backprobs)
+          # lp_initial <- sum(ll.y.R[this.i,,])+sum(ll.y.R[cand.i,,])
+          # lp_proposed <- sum(ll.y.R.cand[this.i,,])+sum(ll.y.R.cand[cand.i,,])
+          #"can't do math in >2 dimensions" loop
+          lp_initial <- lp_proposed <- 0
+          for(g in 1:n.year){
+            lp_initial <- lp_initial + ll.y.R[this.i,g,1] + ll.y.R[cand.i,g,1]
+            lp_proposed <- lp_proposed + ll.y.R.cand[this.i,g,1] + ll.y.R.cand[cand.i,g,1]
+          }
+          log_MH_ratio <- (lp_proposed+log(backprobs[this.i])) - (lp_initial+log(propprobs[cand.i]))
+          accept <- decide(log_MH_ratio)
+          
+          if(accept){
+            for(g in 1:n.year){ #"can't do math in >2 dimensions" loop
+              for(j in 1:J[g]){
+                y.R.true[this.i,g,j] <- y.R.true.cand[this.i,g,j]
+                y.R.true[cand.i,g,j] <- y.R.true.cand[cand.i,g,j]
+              }
+              ll.y.R[this.i,g,1] <- ll.y.R.cand[this.i,g,1]
+              ll.y.R[cand.i,g,1] <- ll.y.R.cand[cand.i,g,1]
+            }
+            #swap flank indices
+            ID.R[l] <- cand.i
+            #if cand.i was in ID.R, update this ID index
+            tmp <- nimDim(cand.ID.idx)[1]
+            if(tmp>0){
+              ID.R[cand.ID.idx] <- this.i
+            }
           }
         }
       }

@@ -150,14 +150,23 @@ conf$addSampler(target = c("z"),
 
 #left and right flank updates
 J.max <- max(data$J)
+y2D.L <- apply(data$y.L.obs,c(1,2),sum)
+y2D.R <- apply(data$y.R.obs,c(1,2),sum)
+y.L.start <- apply(y2D.L,1,function(x){which(x>0)[1]})
+y.L.stop <- data$n.year - apply(y2D.L,1,function(x){which(rev(x>0))[1]}) + 1
+y.R.start <- apply(y2D.R,1,function(x){which(x>0)[1]})
+y.R.stop <- data$n.year - apply(y2D.R,1,function(x){which(rev(x>0))[1]}) + 1
+
 conf$addSampler(target = paste0("y.L.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
                 type = 'IDLSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
                                                    n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
-                                                   n.L=nimbuild$n.L,prop.scale=1),silent = TRUE)
+                                                   n.L=nimbuild$n.L,prop.scale=1,
+                                                   y.L.start=y.L.start,y.L.stop=y.L.stop),silent = TRUE)
 conf$addSampler(target = paste0("y.R.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
                 type = 'IDRSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
                                                    n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
-                                                   n.R=nimbuild$n.R,prop.scale=1),silent = TRUE)
+                                                   n.R=nimbuild$n.R,prop.scale=1,
+                                                   y.R.start=y.R.start,y.R.stop=y.R.stop),silent = TRUE)
 
 #activity center sampler. This sampler tunes activity centers when z.super[i]=1 and
 #draws from the prior otherwise.

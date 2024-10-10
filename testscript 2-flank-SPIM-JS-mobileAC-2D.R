@@ -4,8 +4,6 @@
 #some occasions with 1 camera and others with 2
 
 #this version also considers activity center relocation between primary periods.
-#the current algorithm works, but the flank swap updates could potentially be made
-#more efficient, with lower rejection rates
 library(nimble)
 library(coda)
 source("sim.2flank.JS.2D.R")
@@ -155,14 +153,23 @@ conf$addSampler(target = c("z"),
 
 #left and right flank updates
 J.max <- max(data$J)
+y2D.L <- apply(data$y.L.obs,c(1,2),sum)
+y2D.R <- apply(data$y.R.obs,c(1,2),sum)
+y.L.start <- apply(y2D.L,1,function(x){which(x>0)[1]})
+y.L.stop <- data$n.year - apply(y2D.L,1,function(x){which(rev(x>0))[1]}) + 1
+y.R.start <- apply(y2D.R,1,function(x){which(x>0)[1]})
+y.R.stop <- data$n.year - apply(y2D.R,1,function(x){which(rev(x>0))[1]}) + 1
+
 conf$addSampler(target = paste0("y.L.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
                 type = 'IDLSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
                                                    n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
-                                                   n.L=nimbuild$n.L,prop.scale=1),silent = TRUE)
+                                                   n.L=nimbuild$n.L,prop.scale=1,
+                                                   y.L.start=y.L.start,y.L.stop=y.L.stop),silent = TRUE)
 conf$addSampler(target = paste0("y.R.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
                 type = 'IDRSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
                                                    n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
-                                                   n.R=nimbuild$n.R,prop.scale=1),silent = TRUE)
+                                                   n.R=nimbuild$n.R,prop.scale=1,
+                                                   y.R.start=y.R.start,y.R.stop=y.R.stop),silent = TRUE)
 
 #activity center sampler. There are 3 samplers here for these cases
 #1) z.super=1 and z=1, sSampler1 uses Metropolis-Hastings
@@ -189,7 +196,7 @@ Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 # Run the model.
 start.time2 <- Sys.time()
-Cmcmc$run(2000,reset=FALSE) #can extend run by rerunning this line
+Cmcmc$run(2500,reset=FALSE) #can extend run by rerunning this line
 end.time <- Sys.time()
 time1 <- end.time-start.time  # total time for compilation, replacing samplers, and fitting
 time2 <- end.time-start.time2 # post-compilation run time
