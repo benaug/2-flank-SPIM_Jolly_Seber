@@ -138,7 +138,7 @@ z.nodes <- Rmodel$expandNodeNames(paste0("z[1:",M,",1]"))
 calcNodes <- c(N.nodes,N.recruit.nodes,y.B.nodes,y.L.nodes,y.R.nodes,z.nodes) #the ones that need likelihoods updated in mvSaved
 conf$addSampler(target = c("z"),
                 type = 'zSampler',control = list(M=M,n.year=data$n.year,J=data$J,
-                                                 z.super.ups=z.super.ups,
+                                                 z.super.ups=z.super.ups,d2.nodes=d2.nodes,
                                                  y.B.nodes=y.B.nodes,pd.B.nodes=pd.B.nodes,
                                                  y.L.nodes=y.L.nodes,pd.L.nodes=pd.L.nodes,
                                                  y.R.nodes=y.R.nodes,pd.R.nodes=pd.R.nodes,
@@ -185,12 +185,12 @@ Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 # Run the model.
 start.time2 <- Sys.time()
-Cmcmc$run(2500,reset=FALSE) #can extend run by rerunning this line
+Cmcmc$run(500,reset=FALSE) #can extend run by rerunning this line
 end.time <- Sys.time()
 time1 <- end.time-start.time  # total time for compilation, replacing samplers, and fitting
 time2 <- end.time-start.time2 # post-compilation run time
 
-mvSamples <-  as.matrix(Cmcmc$mvSamples)
+mvSamples <- as.matrix(Cmcmc$mvSamples)
 plot(mcmc(mvSamples[-c(1:250),]))
 
 #reminder what the targets are

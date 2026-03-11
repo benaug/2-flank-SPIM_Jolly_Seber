@@ -32,7 +32,7 @@ NimModel <- nimbleCode({
       phi[i,g] <- phi.fixed #individual by year survival
     }
     #survival likelihood (bernoulli) that only sums from z.start to z.stop
-    z[i,1:n.year] ~ dSurvival(phi=phi[i,1:(n.year-1)],z.start=z.start[i],z.stop=z.stop[i])
+    z[i,1:n.year] ~ dSurvival(phi=phi[i,1:(n.year-1)],z.start=z.start[i],z.stop=z.stop[i],z.super=z.super[i])
   }
   
   ##Detection##
