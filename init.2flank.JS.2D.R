@@ -9,7 +9,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
   J <- unlist(lapply(X,nrow)) #traps per year
   J.max <- max(J)
   K.max <- data$K
-  n.year <- dim(data$y.L.obs)[2]
+  n.primary <- dim(data$y.L.obs)[2]
   
   n.B <- nrow(data$y.B.obs)
   if(is.na(n.fixed)|(n.B==n.fixed)){
@@ -38,7 +38,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
     n.L <- nrow(y.L)
     n.R <- nrow(y.R)
     
-    y.true <- array(0,dim=c(M,n.year,J.max,3))
+    y.true <- array(0,dim=c(M,n.primary,J.max,3))
     ID.L <- rep(NA,n.L)
     ID.R <- rep(NA,n.R)
     if(n.fixed>0){
@@ -87,7 +87,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
     n.B <- nrow(y.B)
     n.L <- nrow(y.L)
     n.R <- nrow(y.R)
-    y.true <- array(0,dim=c(M,n.year,J.max,3))
+    y.true <- array(0,dim=c(M,n.primary,J.max,3))
     #initialize lefts and rights to "both side" order
     if(n.B>0){
       y.true[1:n.B,,,1] <- y.B
@@ -99,7 +99,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
     y.R2D <- array(0,dim=c(n.R,sum(J)))
     X.all <- matrix(NA,sum(J),2)
     idx1 <- 1
-    for(g in 1:n.year){
+    for(g in 1:n.primary){
       idx2 <- idx1 + J[g] - 1
       y.L2D[,idx1:idx2] <- y.L[,g,]
       y.R2D[,idx1:idx2] <- y.R[,g,]
@@ -140,7 +140,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
   
   #initialize z, start with observed guys
   z.init <- 1*(y.nim>0)
-  z.init <- matrix(0,M,n.year)
+  z.init <- matrix(0,M,n.primary)
   z.start.init <- z.stop.init <- rep(NA,M)
   #initialize detected guys
   detected.inds <- which(rowSums(y.nim2D)>0)
@@ -155,11 +155,11 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
   #initialize undetected guys
   undetected.inds <- which(rowSums(y.nim2D)==0)
   for(i in undetected.inds){
-    start <- sample(1:n.year,1) #random recruit year
-    if(start<(n.year-1)){ #random death year
-      stop <- sample(start:n.year,1)
+    start <- sample(1:n.primary,1) #random recruit year
+    if(start<(n.primary-1)){ #random death year
+      stop <- sample(start:n.primary,1)
     }else{ #unless recruited one year before end
-      stop <- n.year
+      stop <- n.primary
     }
     z.init[i,start:stop] <- 1
     z.start.init[i] <- start
@@ -169,16 +169,16 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
   
   #initialize N structures from z.init
   N.init <- colSums(z.init[z.super.init==1,])
-  N.survive.init <- N.recruit.init <- rep(NA,n.year-1)
-  for(g in 2:n.year){
+  N.survive.init <- N.recruit.init <- rep(NA,n.primary-1)
+  for(g in 2:n.primary){
     N.survive.init[g-1] <- sum(z.init[,g-1]==1&z.init[,g]==1&z.super.init==1)
     N.recruit.init[g-1] <- N.init[g]-N.survive.init[g-1]
   }
 
   #remaining SCR stuff to initialize
   #put X in ragged array
-  X.nim <- array(0,dim=c(n.year,J.max,2))
-  for(g in 1:n.year){
+  X.nim <- array(0,dim=c(n.primary,J.max,2))
+  for(g in 1:n.primary){
     X.nim[g,1:J[g],1:2] <- X[[g]]
   }
   
@@ -189,7 +189,7 @@ init.2flank.JS.2D <- function(data=data,M=M,n.fixed=NA,initTrue=FALSE){
   idx <- which(rowSums(y.nim)>0) #switch for those actually caught
   for(i in idx){
     trps <- matrix(0,nrow=0,ncol=2) #get locations of traps of capture across years for ind i
-    for(g in 1:n.year){
+    for(g in 1:n.primary){
       if(sum(y.nim[i,g,])>0){
         trps.g <- matrix(X.nim[g,which(y.nim[i,g,]>0),],ncol=2,byrow=FALSE)
         trps <- rbind(trps,trps.g)

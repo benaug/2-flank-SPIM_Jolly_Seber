@@ -17,20 +17,20 @@ nimbleOptions(determinePredictiveNodesInModel = FALSE)
 # #If using Nimble before version 0.13.1, run this line instead
 # nimble:::setNimbleOption('MCMCjointlySamplePredictiveBranches', FALSE)
 
-n.year <- 5 #number of years
+n.primary <- 5 #number of years
 lambda.y1 <- 50 #expected N in year 1
-gamma <- rep(0.6,n.year-1) #yearly per-capita recruitment
-phi <- rep(0.5,n.year-1) #yearly survival, model file set up for fixed
+gamma <- rep(0.6,n.primary-1) #yearly per-capita recruitment
+phi <- rep(0.5,n.primary-1) #yearly survival, model file set up for fixed
 #yearly detection probabilities at activity center. Model file set up for p0.L=p0.R
-p0.B <- rep(0.05,n.year) #both-flank detections
-p0.L <- rep(0.05,n.year) #left-flank detections
-p0.R <- rep(0.05,n.year) #right-flank detections
-sigma <- rep(0.5,n.year) #yearly detection function spatial scale
-K <- rep(10,n.year) #yearly sampling occasions
+p0.B <- rep(0.05,n.primary) #both-flank detections
+p0.L <- rep(0.05,n.primary) #left-flank detections
+p0.R <- rep(0.05,n.primary) #right-flank detections
+sigma <- rep(0.5,n.primary) #yearly detection function spatial scale
+K <- rep(10,n.primary) #yearly sampling occasions
 
 buff <- 2 #state space buffer. Buffers maximal x and y dimensions of X below across years
-X <- vector("list",n.year) #one trapping array per year
-for(g in 1:n.year){ #using same trapping array every year here
+X <- vector("list",n.primary) #one trapping array per year
+for(g in 1:n.primary){ #using same trapping array every year here
   X[[g]] <- as.matrix(expand.grid(3:11,3:11))
 }
 J <- unlist(lapply(X,nrow))
@@ -39,14 +39,14 @@ K.max <- max(K)
 
 #year by trap matrix indicating which traps had 1 vs. 2 cameras in each year
 #if you do not include 2 camera stations, you cannot observe both-flank captures
-J.cams <- matrix(0,n.year,J.max)
-for(g in 1:n.year){
+J.cams <- matrix(0,n.primary,J.max)
+for(g in 1:n.primary){
   J.cams[g,1:J[g]] <- 1 #start with all 1 cam stations
   # J.cams[g,seq(1,J[g],2)] <- 2 #set some to 2 (or not)
 }
 #year by trap matrix of camera operation - assuming all operational for all occasions in each year
-K2D <- matrix(0,n.year,J.max)
-for(g in 1:n.year){
+K2D <- matrix(0,n.primary,J.max)
+for(g in 1:n.primary){
   K2D[g,1:J[g]] <- K[g]
 }
 
@@ -54,7 +54,7 @@ for(g in 1:n.year){
 # n.fixed <- 5 #minimum number of matched flanks for simulation
 n.fixed <- NA #supply NA for only n.B flank matches to be known (if there are any).
 #must supply this for simulation so we know to retain left and right known flank individuals with no captures
-data <- sim.2flank.JS.2D(lambda.y1=lambda.y1,gamma=gamma,n.year=n.year,
+data <- sim.2flank.JS.2D(lambda.y1=lambda.y1,gamma=gamma,n.primary=n.primary,
             phi=phi,p0.B=p0.B,p0.L=p0.L,p0.R=p0.R,sigma=sigma,X=X,buff=buff,
             K=K,K2D=K2D,J.cams=J.cams,n.fixed=n.fixed)
 #true N.super
@@ -72,7 +72,7 @@ M <- 300 #data augmentation level. Check N.super posterior to make sure it never
 nimbuild <- init.2flank.JS.2D(data=data,M=M,n.fixed=data$n.fixed,initTrue=FALSE)
 
 #constants for Nimble
-constants <- list(n.year=data$n.year,M=M,J=data$J,xlim=data$xlim,ylim=data$ylim,
+constants <- list(n.primary=data$n.primary,M=M,J=data$J,xlim=data$xlim,ylim=data$ylim,
                   K2D=data$K2D,J.cams=data$J.cams,
                   n.L=nimbuild$n.L,n.R=nimbuild$n.R)
 #inits for Nimble. includes left and right flank histories that are partially or fully latent
@@ -84,7 +84,7 @@ Niminits <- list(N=nimbuild$N,lambda.y1=nimbuild$N[1],
                  y.L.true=nimbuild$y.true[,,,2],
                  y.R.true=nimbuild$y.true[,,,3],
                  sigma=2, #set sigma higher than expected so that starting logProb is finite
-                 p0.B=rep(0.1,data$n.year),p0.S=rep(0.1,data$n.year))
+                 p0.B=rep(0.1,data$n.primary),p0.S=rep(0.1,data$n.primary))
 
 #data for Nimble
 Nimdata <- list(y.B.true=nimbuild$y.true[,,,1],X=nimbuild$X.nim) #both flank data is fully observed
@@ -120,7 +120,7 @@ y.B.nodes <- pd.B.nodes <- c()
 y.L.nodes <- pd.L.nodes <- c()
 y.R.nodes <- pd.R.nodes <- c()
 d2.nodes <- c()
-for(g in 1:data$n.year){
+for(g in 1:data$n.primary){
   #if you change y structure, change here
   d2.nodes <- c(d2.nodes,Rmodel$expandNodeNames(paste0("d2[1:",M,",",g,",1:",data$J[g],"]")))
   y.B.nodes <- c(y.B.nodes,Rmodel$expandNodeNames(paste0("y.B.true[1:",M,",",g,",1:",data$J[g],"]")))
@@ -131,13 +131,13 @@ for(g in 1:data$n.year){
   pd.R.nodes <- c(pd.R.nodes,Rmodel$expandNodeNames(paste0("pd.R[1:",M,",",g,",1:",data$J[g],"]")))
 }
 N.nodes <- Rmodel$expandNodeNames(paste0("N"))
-N.survive.nodes <- Rmodel$expandNodeNames(paste0("N.survive[1:",data$n.year-1,"]"))
-N.recruit.nodes <- Rmodel$expandNodeNames(paste0("N.recruit[1:",data$n.year-1,"]"))
-ER.nodes <- Rmodel$expandNodeNames(paste0("ER[1:",data$n.year-1,"]"))
+N.survive.nodes <- Rmodel$expandNodeNames(paste0("N.survive[1:",data$n.primary-1,"]"))
+N.recruit.nodes <- Rmodel$expandNodeNames(paste0("N.recruit[1:",data$n.primary-1,"]"))
+ER.nodes <- Rmodel$expandNodeNames(paste0("ER[1:",data$n.primary-1,"]"))
 z.nodes <- Rmodel$expandNodeNames(paste0("z[1:",M,",1]"))
 calcNodes <- c(N.nodes,N.recruit.nodes,y.B.nodes,y.L.nodes,y.R.nodes,z.nodes) #the ones that need likelihoods updated in mvSaved
 conf$addSampler(target = c("z"),
-                type = 'zSampler',control = list(M=M,n.year=data$n.year,J=data$J,
+                type = 'zSampler',control = list(M=M,n.primary=data$n.primary,J=data$J,
                                                  z.super.ups=z.super.ups,d2.nodes=d2.nodes,
                                                  y.B.nodes=y.B.nodes,pd.B.nodes=pd.B.nodes,
                                                  y.L.nodes=y.L.nodes,pd.L.nodes=pd.L.nodes,
@@ -153,18 +153,18 @@ J.max <- max(data$J)
 y2D.L <- apply(data$y.L.obs,c(1,2),sum)
 y2D.R <- apply(data$y.R.obs,c(1,2),sum)
 y.L.start <- apply(y2D.L,1,function(x){which(x>0)[1]})
-y.L.stop <- data$n.year - apply(y2D.L,1,function(x){which(rev(x>0))[1]}) + 1
+y.L.stop <- data$n.primary - apply(y2D.L,1,function(x){which(rev(x>0))[1]}) + 1
 y.R.start <- apply(y2D.R,1,function(x){which(x>0)[1]})
-y.R.stop <- data$n.year - apply(y2D.R,1,function(x){which(rev(x>0))[1]}) + 1
+y.R.stop <- data$n.primary - apply(y2D.R,1,function(x){which(rev(x>0))[1]}) + 1
 
-conf$addSampler(target = paste0("y.L.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
+conf$addSampler(target = paste0("y.L.true[1:",M,",1:",data$n.primary,",1:",J.max,"]"),
                 type = 'IDLSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
-                                                   n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
+                                                   n.primary=data$n.primary,M=nimbuild$M,J=data$J,K=data$K,
                                                    n.L=nimbuild$n.L,prop.scale=1,
                                                    y.L.start=y.L.start,y.L.stop=y.L.stop),silent = TRUE)
-conf$addSampler(target = paste0("y.R.true[1:",M,",1:",data$n.year,",1:",J.max,"]"),
+conf$addSampler(target = paste0("y.R.true[1:",M,",1:",data$n.primary,",1:",J.max,"]"),
                 type = 'IDRSampler',control = list(K2D=data$K2D,J.cams=data$J.cams,n.fixed=data$n.fixed,
-                                                   n.year=data$n.year,M=nimbuild$M,J=data$J,K=data$K,
+                                                   n.primary=data$n.primary,M=nimbuild$M,J=data$J,K=data$K,
                                                    n.R=nimbuild$n.R,prop.scale=1,
                                                    y.R.start=y.R.start,y.R.stop=y.R.stop),silent = TRUE)
 

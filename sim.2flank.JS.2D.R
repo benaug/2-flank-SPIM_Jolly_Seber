@@ -4,7 +4,7 @@ e2dist <- function (x, y){
   matrix(dvec, nrow = nrow(x), ncol = nrow(y), byrow = F)
 }
 
-sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
+sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,
                        phi=phi,p0.B=NA,p0.L=NA,p0.R=NA,sigma=NA,X=NA,buff=buff,K=NA,
                        K2D=NA,J.cams=NA,n.fixed=NA,sigma.move=NULL,seed=NULL){
   if(!is.null(seed)){
@@ -12,20 +12,20 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
   }
   
   #Population dynamics
-  N <- rep(NA,n.year)
-  N.recruit <- N.survive <- ER <- rep(NA,n.year-1)
+  N <- rep(NA,n.primary)
+  N.recruit <- N.survive <- ER <- rep(NA,n.primary-1)
   N[1] <- rpois(1,lambda.y1)
   
   #Easiest to increase dimension of z as we simulate bc size not known in advance.
-  z <- matrix(0,N[1],n.year)
+  z <- matrix(0,N[1],n.primary)
   z[1:N[1],1] <- 1
-  for(g in 2:n.year){
+  for(g in 2:n.primary){
     #Simulate recruits
     ER[g-1] <- N[g-1]*gamma[g-1]
     N.recruit[g-1] <- rpois(1,ER[g-1])
     #add recruits to z
     z.dim.old <- nrow(z)
-    z <- rbind(z,matrix(0,nrow=N.recruit[g-1],ncol=n.year))
+    z <- rbind(z,matrix(0,nrow=N.recruit[g-1],ncol=n.primary))
     z[(z.dim.old+1):(z.dim.old+N.recruit[g-1]),g] <- 1
     
     #Simulate survival
@@ -35,7 +35,7 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
     N[g] <- N.recruit[g-1]+N.survive[g-1]
   }
   
-  if(any(N.recruit+N.survive!=N[2:n.year]))stop("Simulation bug")
+  if(any(N.recruit+N.survive!=N[2:n.primary]))stop("Simulation bug")
   if(any(colSums(z)!=N))stop("Simulation bug")
   
   #detection
@@ -51,9 +51,9 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
   library(truncnorm)
   if(!is.null(sigma.move)){
     print("simulating mobile ACs")
-    s <- array(NA,dim=c(N.super,n.year,2))
+    s <- array(NA,dim=c(N.super,n.primary,2))
     s[,1,] <- cbind(runif(N.super, xlim[1],xlim[2]), runif(N.super,ylim[1],ylim[2]))
-    for(g in 2:n.year){
+    for(g in 2:n.primary){
       s[,g,1] <- rtruncnorm(N.super,s[,g-1,1],sd=sigma.move,a=xlim[1],b=xlim[2])
       s[,g,2] <- rtruncnorm(N.super,s[,g-1,2],sd=sigma.move,a=ylim[1],b=ylim[2])
     }
@@ -62,9 +62,9 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
     s <- cbind(runif(N.super, xlim[1],xlim[2]), runif(N.super,ylim[1],ylim[2]))
   }
   
-  kern <- pd.B <- pd.L <- pd.R <- array(0,dim=c(N.super,n.year,J.max))
-  y.B <- y.L <- y.R <- array(0,dim=c(N.super,n.year,J.max))
-  for(g in 1:n.year){
+  kern <- pd.B <- pd.L <- pd.R <- array(0,dim=c(N.super,n.primary,J.max))
+  y.B <- y.L <- y.R <- array(0,dim=c(N.super,n.primary,J.max))
+  for(g in 1:n.primary){
     if(!is.null(sigma.move)){
       D <- e2dist(s[,g,],X[[g]])
     }else{
@@ -136,7 +136,7 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.year=NA,
     n.fixed <- n.B
   }
   
-  out <-list(N=N,N.recruit=N.recruit,N.survive=N.survive,X=X,J=J,K=K,K2D=K2D,J.cams=J.cams,n.year=n.year,
+  out <-list(N=N,N.recruit=N.recruit,N.survive=N.survive,X=X,J=J,K=K,K2D=K2D,J.cams=J.cams,n.primary=n.primary,
              xlim=xlim,ylim=ylim,y.B.obs=y.B.obs,y.L.obs=y.L.obs,y.R.obs=y.R.obs,
              y.B=y.B,y.L=y.L,y.R=y.R,s=s,n=n,ID.B=ID.B,ID.L=ID.L,ID.R=ID.R,n.fixed=n.fixed,
              truth=truth,seed=seed)
