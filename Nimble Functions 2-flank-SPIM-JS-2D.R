@@ -9,7 +9,7 @@ GetD2 <- nimbleFunction(
     returnType(double(1))
     J <- nimDim(X)[1]
     if(z.super==0 | z.super==1&z==0){
-      return(rep(0,J)) #skip calculation if not is superpop, or in superpop, but not alive in this year
+      return(rep(0,J)) #skip calculation if not is superpop, or in superpop, but not alive in this primary occasion
     }
     if(z==1){ #otherwise calculate
       d2 <- ((s[1]-X[1:J,1])^2 + (s[2]-X[1:J,2])^2)
@@ -24,7 +24,7 @@ GetDetectionProb <- nimbleFunction(
     returnType(double(1))
     J <- nimDim(d2)[1]
     if(z.super==0 | z.super==1&z==0){
-      return(rep(0,J)) #skip calculation if not is superpop, or in superpop, but not alive in this year
+      return(rep(0,J)) #skip calculation if not is superpop, or in superpop, but not alive in this primary occasion
     }
     if(z==1){ #otherwise calculate
       pd <-p0*exp(-d2/(2*sigma^2))
@@ -35,7 +35,7 @@ GetDetectionProb <- nimbleFunction(
 dBernoulliVectorBoth <- nimbleFunction(
   run = function(x = double(1), pd=double(1), K2D=double(1), J.cams = double(1), z = double(0), z.super=double(0),log = integer(0)) {
     returnType(double(0))
-    if(z.super==0 | z.super==1&z==0){#skip calculation if not is superpop, or in superpop, but not alive in this year
+    if(z.super==0 | z.super==1&z==0){#skip calculation if not is superpop, or in superpop, but not alive in this primary occasion
       if(sum(x)>0){ #need this so z is not turned off if samples allocated to individual
         return(-Inf)
       }else{
@@ -56,7 +56,7 @@ dBernoulliVectorBoth <- nimbleFunction(
 dBernoulliVectorSingle <- nimbleFunction(
   run = function(x = double(1), pd=double(1), K2D=double(1), J.cams=double(1), z = double(0), z.super=double(0),log = integer(0)) {
     returnType(double(0))
-    if(z.super==0 | z.super==1&z==0){#skip calculation if not is superpop, or in superpop, but not alive in this year
+    if(z.super==0 | z.super==1&z==0){#skip calculation if not is superpop, or in superpop, but not alive in this primary occasion
       if(sum(x)>0){ #need this so z is not turned off if samples allocated to individual
         return(-Inf)
       }else{
@@ -95,7 +95,7 @@ rBernoulliVectorSingle <- nimbleFunction(
   }
 )
 
-#this is used to restrict likelihood evaluation to only the years relevant for survival for each individual
+#this is used to restrict likelihood evaluation to only the primary occasions relevant for survival for each individual
 dSurvival <- nimbleFunction(
   run = function(x = double(1), phi = double(1), z.start = double(0), z.stop = double(0), z.super = double(0),
                  log = integer(0)) {
@@ -103,14 +103,14 @@ dSurvival <- nimbleFunction(
     logProb <- 0
     if(z.super==1){
       n.primary <- length(phi)+1
-      #extract first and last survival event years
+      #extract first and last survival event primary occasions
       surv.start <- z.start+1
       surv.stop <- z.stop+1 #count death events, first z[i,]=0
-      if(surv.start <= n.primary){ #if surv.start beyond last year, no survival events, logProb=0
+      if(surv.start <= n.primary){ #if surv.start beyond last primary occasion, no survival events, logProb=0
         if(surv.stop > n.primary){ #but can't survive past n.primary
           surv.stop <- n.primary 
         }
-        for(g in surv.start:surv.stop){ #sum logprob over survival event years
+        for(g in surv.start:surv.stop){ #sum logprob over survival event primary occasions
           logProb <- logProb + dbinom(x[g], size = 1, p = phi[g-1], log = TRUE)
         }
       }
@@ -172,7 +172,7 @@ zSampler <- nimbleFunction(
     #1) Detected guy updates: z.start, z.stop
     # 1a) z start update (z.stop update below): Gibbs, compute full conditional
     for(i in 1:M){
-      if(z.obs[i]==1&y2D[i,1]==0){ #for detected guys, skip if observed 1st year
+      if(z.obs[i]==1&y2D[i,1]==0){ #for detected guys, skip if observed 1st primary occasion
         z.curr <- model$z[i,]
         z.start.curr <- model$z.start[i]
         N.curr <- model$N
@@ -181,7 +181,7 @@ zSampler <- nimbleFunction(
         first.det <- min(dets)
         lp.start <- rep(-Inf,n.primary)
         i.idx <- seq(i,M*n.primary,M) #used to reference correct y and pd nodes
-        for(g in 1:first.det){ #must be recruited in year with first detection or before
+        for(g in 1:first.det){ #must be recruited in primary occasion with first detection or before
           z.start.prop <- g
           model$z.start[i] <<- z.start.prop
           z.prop <- rep(0,n.primary)
@@ -196,14 +196,14 @@ zSampler <- nimbleFunction(
           model$N <<- N.curr - z.curr + z.prop
           #2) Update N.recruit
           model$N.recruit <<- N.recruit.curr #set back to original first
-          if(z.start.curr > 1){ #if wasn't in pop in year 1 in current, remove recruit event
+          if(z.start.curr > 1){ #if wasn't in pop in primary occasion 1 in current, remove recruit event
             model$N.recruit[z.start.curr-1] <<- N.recruit.curr[z.start.curr-1] - 1
           }
-          if(z.start.prop > 1){ #if wasn't in pop in year 1 in proposal, add recruit event
+          if(z.start.prop > 1){ #if wasn't in pop in primary occasion 1 in proposal, add recruit event
             model$N.recruit[z.start.prop-1] <<- N.recruit.curr[z.start.prop-1] + 1
           }
           #3) Update N.survive
-          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
           model$calculate(ER.nodes) #update ER when N updated
           model$calculate(d2.nodes[i.idx]) #update d2 nodes when a z changes
           model$calculate(pd.B.nodes[i.idx]) #update pd nodes when a z changes
@@ -241,13 +241,13 @@ zSampler <- nimbleFunction(
           model$z[i,] <<- z.prop
           model$N <<- N.curr - z.curr + z.prop
           model$N.recruit <<- N.recruit.curr #set back to original first
-          if(z.start.curr > 1){ #if wasn't in pop in year 1 in current, remove recruit event
+          if(z.start.curr > 1){ #if wasn't in pop in primary occasion 1 in current, remove recruit event
             model$N.recruit[z.start.curr-1] <<- N.recruit.curr[z.start.curr-1] - 1
           }
-          if(z.start.prop > 1){ #if wasn't in pop in year 1 in proposal, add recruit event
+          if(z.start.prop > 1){ #if wasn't in pop in primary occasion 1 in proposal, add recruit event
             model$N.recruit[z.start.prop-1] <<- N.recruit.curr[z.start.prop-1] + 1
           }
-          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
           model$calculate(ER.nodes) #update ER when N updated
           model$calculate(d2.nodes[i.idx]) #update d2 nodes when a z changes
           model$calculate(pd.B.nodes[i.idx]) #update pd nodes
@@ -307,7 +307,7 @@ zSampler <- nimbleFunction(
     
     #1b) z stop update (z.start update above): Gibbs, compute full conditional
     for(i in 1:M){
-      if(z.obs[i]==1&y2D[i,n.primary]==0){ #for detected guys, skip if observed in final year
+      if(z.obs[i]==1&y2D[i,n.primary]==0){ #for detected guys, skip if observed in final primary occasion
         z.curr <- model$z[i,]
         z.stop.curr <- model$z.stop[i]
         N.curr <- model$N
@@ -315,7 +315,7 @@ zSampler <- nimbleFunction(
         last.det <- max(dets)
         lp.stop <- rep(-Inf,n.primary)
         i.idx <- seq(i,M*n.primary,M) #used to reference correct y and pd nodes
-        for(g in (last.det):n.primary){ #can't die on or before year of last detection
+        for(g in (last.det):n.primary){ #can't die on or before primary occasion of last detection
           model$z.stop[i] <<- g
           z.prop <- rep(0,n.primary)
           z.prop[last.det:g] <- 1 #must be alive between last detection and this z.stop
@@ -350,7 +350,7 @@ zSampler <- nimbleFunction(
           z.prop[1:(last.det)] <- z.curr[1:(last.det)] #fill in remaining current z values, keeping death event the same
           model$z[i,] <<- z.prop
           model$N <<- N.curr - z.curr + z.prop
-          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+          model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
           model$calculate(ER.nodes) #update ER when N updated
           model$calculate(d2.nodes[i.idx]) #update d2 nodes when a z changes
           model$calculate(pd.B.nodes[i.idx]) #update pd nodes when z changes
@@ -431,7 +431,7 @@ zSampler <- nimbleFunction(
         log.prop.for <- log.prop.for + log(recruit.probs.for[z.start.prop])
         
         #simulate survival
-        if(z.start.prop < n.primary){#if you don't recruit in final year
+        if(z.start.prop < n.primary){#if you don't recruit in final primary occasion
           for(g in (z.start.prop+1):n.primary){
             z.prop[g] <- rbinom(1,1,model$phi[i,g-1]*z.prop[g-1])
             log.prop.for <- log.prop.for + dbinom(z.prop[g],1,model$phi[i,g-1]*z.prop[g-1],log=TRUE)
@@ -447,14 +447,14 @@ zSampler <- nimbleFunction(
         #1) Update N
         model$N <<- model$N - z.curr + z.prop
         #2) Update N.recruit
-        if(z.start.curr > 1){ #if wasn't in pop in year 1 in current, remove recruit event
+        if(z.start.curr > 1){ #if wasn't in pop in primary occasion 1 in current, remove recruit event
           model$N.recruit[z.start.curr-1] <<- model$N.recruit[z.start.curr-1] - 1
         }
-        if(z.start.prop > 1){ #if wasn't in pop in year 1 in proposal, add recruit event
+        if(z.start.prop > 1){ #if wasn't in pop in primary occasion 1 in proposal, add recruit event
           model$N.recruit[z.start.prop-1] <<- model$N.recruit[z.start.prop-1] + 1
         }
         #3) Update N.survive
-        model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+        model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
         
         model$calculate(ER.nodes) #update ER when N updated
         model$calculate(d2.nodes[i.idx]) #update d2 nodes when a z changes
@@ -479,7 +479,7 @@ zSampler <- nimbleFunction(
         recruit.probs.back <- c(model$lambda.y1,model$ER)
         recruit.probs.back <- recruit.probs.back/sum(recruit.probs.back)
         log.prop.back <- log.prop.back + log(recruit.probs.back[z.start.curr])
-        if(z.start.curr < n.primary){#if you don't recruit in final year
+        if(z.start.curr < n.primary){#if you don't recruit in final primary occasion
           for(g in (z.start.curr+1):n.primary){
             log.prop.back <- log.prop.back + dbinom(z.curr[g],1,model$phi[i,g-1]*z.curr[g-1],log=TRUE)
           }
@@ -579,11 +579,11 @@ zSampler <- nimbleFunction(
         #1) Update N
         model$N <<- model$N - z.curr
         #2) Update N.recruit
-        if(z.start.curr > 1){ #if wasn't in pop in year 1
+        if(z.start.curr > 1){ #if wasn't in pop in primary occasion 1
           model$N.recruit[z.start.curr-1] <<- model$N.recruit[z.start.curr-1] - 1
         }
         #3) Update N.survive
-        model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+        model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
         model$calculate(ER.nodes) #update ER when N updated
         model$calculate(d2.nodes[pick.idx]) #update d2 nodes when a z changes
         model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
@@ -727,11 +727,11 @@ zSampler <- nimbleFunction(
         #1) Update N
         model$N <<- model$N + model$z[pick,]
         #2) Update N.recruit
-        if(model$z.start[pick] > 1){ #if wasn't in pop in year 1
+        if(model$z.start[pick] > 1){ #if wasn't in pop in primary occasion 1
           model$N.recruit[z.start.prop-1] <<- model$N.recruit[z.start.prop-1] + 1
         }
         #3) Update N.survive
-        model$N.survive <<- model$N[2:n.primary] - model$N.recruit #survivors are guys alive in year g-1 minus recruits in this year g
+        model$N.survive <<- model$N[2:n.primary] - model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
         model$calculate(ER.nodes) #update ER when N updated
         model$calculate(d2.nodes[pick.idx]) #update d2 nodes when a z changes
         model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
@@ -1108,4 +1108,56 @@ IDRSampler <- nimbleFunction(
     }
   },
   methods = list( reset = function () {} )
+)
+
+truncGammaPoisSampler <- nimbleFunction(
+  contains = sampler_BASE,
+  setup = function(model,mvSaved,target,control){
+    calcNodes <- model$getDependencies(target)
+    upper <- model$getBound(target,"upper")
+    
+    if(target=="lambda.y1"){
+      is.lambda <- TRUE
+      is.fixed.gamma <- FALSE
+      g <- 1
+      n.recruit <- 1
+    }else if(target=="gamma"){
+      is.lambda <- FALSE
+      is.fixed.gamma <- TRUE
+      g <- 1
+      recruitNodes <- grep("^N.recruit\\[",model$getNodeNames(stochOnly=TRUE),value=TRUE)
+      n.recruit <- length(recruitNodes)
+    }else{
+      is.lambda <- FALSE
+      is.fixed.gamma <- FALSE
+      g <- as.integer(gsub("[^0-9]","",target))
+      n.recruit <- 1
+    }
+  },
+  run = function(){
+    if(is.lambda){
+      count <- model$N[1]
+      rate <- 1
+    }else if(is.fixed.gamma){
+      count <- 0
+      rate <- 0
+      for(j in 1:n.recruit){
+        count <- count+model$N.recruit[j]
+        rate <- rate+model$N[j]
+      }
+    }else{
+      count <- model$N.recruit[g]
+      rate <- model$N[g]
+    }
+    if(rate>0){
+      shape <- count+1
+      p.upper <- pgamma(upper,shape=shape,rate=rate)
+      model[[target]] <<- qgamma(runif(1,0,p.upper),shape=shape,rate=rate)
+    }else{
+      model[[target]] <<- runif(1,0,upper)
+    }
+    model$calculate(calcNodes)
+    copy(from=model,to=mvSaved,row=1,nodes=calcNodes,logProb=TRUE)
+  },
+  methods=list(reset=function(){})
 )
