@@ -1,4 +1,4 @@
-#This version uses a 2D trap operation matrix and camera number matrix (year by trap)
+#This version uses a 2D trap operation matrix and camera number matrix (primary occasion by trap)
 #This does not allow the camera number to change through time at the same
 #station, but runs faster than 3D version that allows one station to have
 #some occasions with 1 camera and others with 2
@@ -10,41 +10,41 @@ source("LRmatch.R")
 source("Nimble Model 2-flank-SPIM-JS-2D.R")
 source("Nimble Functions 2-flank-SPIM-JS-2D.R") #contains custom distributions and updates
 source("sSampler Fixed.R") # activity center sampler that proposes from prior when z.super=0.
-#this one works for fixed activity centers over years only
+#this one works for fixed activity centers over primary occasions only
 
 #If using Nimble version 0.13.1 and you must run this line 
 nimbleOptions(determinePredictiveNodesInModel = FALSE)
 # #If using Nimble before version 0.13.1, run this line instead
 # nimble:::setNimbleOption('MCMCjointlySamplePredictiveBranches', FALSE)
 
-n.primary <- 5 #number of years
-lambda.y1 <- 50 #expected N in year 1
-gamma <- rep(0.6,n.primary-1) #yearly per-capita recruitment
-phi <- rep(0.5,n.primary-1) #yearly survival, model file set up for fixed
-#yearly detection probabilities at activity center. Model file set up for p0.L=p0.R
+n.primary <- 5 #number of primary occasions
+lambda.y1 <- 50 #expected N in primary occasion 1
+gamma <- rep(0.6,n.primary-1) #per-capita recruitment by primary occasion
+phi <- rep(0.5,n.primary-1) #survival by primary occasion, model file set up for fixed
+#detection probabilities at activity center by primary occasion. Model file set up for p0.L=p0.R
 p0.B <- rep(0.05,n.primary) #both-flank detections
 p0.L <- rep(0.05,n.primary) #left-flank detections
 p0.R <- rep(0.05,n.primary) #right-flank detections
-sigma <- rep(0.5,n.primary) #yearly detection function spatial scale
-K <- rep(10,n.primary) #yearly sampling occasions
+sigma <- rep(0.5,n.primary) #detection function spatial scale by primary occasion
+K <- rep(10,n.primary) #sampling occasions by primary occasion
 
-buff <- 2 #state space buffer. Buffers maximal x and y dimensions of X below across years
-X <- vector("list",n.primary) #one trapping array per year
-for(g in 1:n.primary){ #using same trapping array every year here
+buff <- 2 #state space buffer. Buffers maximal x and y dimensions of X below across primary occasions
+X <- vector("list",n.primary) #one trapping array per primary occasion
+for(g in 1:n.primary){ #using same trapping array every primary occasion here
   X[[g]] <- as.matrix(expand.grid(3:11,3:11))
 }
 J <- unlist(lapply(X,nrow))
 J.max <- max(J)
 K.max <- max(K)
 
-#year by trap matrix indicating which traps had 1 vs. 2 cameras in each year
+#primary occasion by trap matrix indicating which traps had 1 vs. 2 cameras in each primary occasion
 #if you do not include 2 camera stations, you cannot observe both-flank captures
 J.cams <- matrix(0,n.primary,J.max)
 for(g in 1:n.primary){
   J.cams[g,1:J[g]] <- 1 #start with all 1 cam stations
   # J.cams[g,seq(1,J[g],2)] <- 2 #set some to 2 (or not)
 }
-#year by trap matrix of camera operation - assuming all operational for all occasions in each year
+#primary occasion by trap matrix of camera operation - assuming all operational for all occasions in each primary occasion
 K2D <- matrix(0,n.primary,J.max)
 for(g in 1:n.primary){
   K2D[g,1:J[g]] <- K[g]
@@ -60,7 +60,7 @@ data <- sim.2flank.JS.2D(lambda.y1=lambda.y1,gamma=gamma,n.primary=n.primary,
 #true N.super
 data$truth$N[1] + sum(data$truth$N.recruit)
 
-#captures per individual by year for each capture types, are these realistic?
+#captures per individual by primary occasion for each capture types, are these realistic?
 apply(data$y.B,c(1,2),sum)
 apply(data$y.L,c(1,2),sum)
 apply(data$y.R,c(1,2),sum)
@@ -90,7 +90,7 @@ Niminits <- list(N=nimbuild$N,lambda.y1=nimbuild$N[1],
 Nimdata <- list(y.B.true=nimbuild$y.true[,,,1],X=nimbuild$X.nim) #both flank data is fully observed
 
 # set parameters to monitor
-parameters <- c('N','gamma.fixed','N.recruit','N.survive','N.super',
+parameters <- c('N','gamma','N.recruit','N.survive','N.super',
                 'lambda.y1','phi.fixed','p0.B','p0.S','sigma')
 parameters2 <- c("ID.L","ID.R") #monitor these with reduced thinning rate
 
@@ -106,7 +106,7 @@ Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FAL
 #N.recruit. If you change the model parameters, you will need to make the same changes here. Finally, 
 #we have to tell nimble which nodes to assign samplers for for the individual covariate when manually
 #instructing nimble which samplers to assign.
-config.nodes <- c('phi.fixed','gamma.fixed','lambda.y1','p0.B','p0.S','sigma')
+config.nodes <- c('phi.fixed','gamma','lambda.y1','p0.B','p0.S','sigma')
 # config.nodes <- c()
 conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
                       monitors2=parameters2,thin2=nt2,
@@ -115,7 +115,7 @@ conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
 ###*required* sampler replacements###
 z.super.ups <- round(M*0.25) #how many z.super update proposals per iteration?
 #20% of M seems reasonable, but optimal will depend on data set
-#loop here bc potentially different numbers of traps to vectorize in each year
+#loop here bc potentially different numbers of traps to vectorize in each primary occasion
 y.B.nodes <- pd.B.nodes <- c()
 y.L.nodes <- pd.L.nodes <- c()
 y.R.nodes <- pd.R.nodes <- c()
@@ -176,6 +176,21 @@ for(i in 1:M){
                   type = 'sSampler',control=list(i=i,xlim=data$xlim,ylim=data$ylim,scale=1),silent = TRUE)
   #scale parameter here is just the starting scale. It will be tuned.
 }
+
+#optional truncated gamma poisson conjugate samplers. 
+#I would always use these as long as you keep uniform priors on lambda.y1 and gamma[g]
+#Typically gives you much greater ESS that propagates to N/N.recruit
+conf$removeSamplers("lambda.y1")
+conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler)
+#if one gamma per primary occasion
+# for(g in 1:(n.primary-1)){
+#   target <- paste0("gamma[",g,"]")
+#   conf$removeSamplers(target)
+#   conf$addSampler(target=target,type=truncGammaPoisSampler)
+# }
+# #if gamma is fixed
+conf$removeSamplers("gamma")
+conf$addSampler(target="gamma",type=truncGammaPoisSampler)
 
 # Build and compile
 Rmcmc <- buildMCMC(conf)
