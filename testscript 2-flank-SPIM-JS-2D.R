@@ -22,9 +22,9 @@ lambda.y1 <- 50 #expected N in primary occasion 1
 gamma <- rep(0.6,n.primary-1) #per-capita recruitment by primary occasion
 phi <- rep(0.5,n.primary-1) #survival by primary occasion, model file set up for fixed
 #detection probabilities at activity center by primary occasion. Model file set up for p0.L=p0.R
-p0.B <- rep(0.05,n.primary) #both-flank detections
+p0.B <- rep(0.1,n.primary) #both-flank detections
 p0.L <- rep(0.05,n.primary) #left-flank detections
-p0.R <- rep(0.05,n.primary) #right-flank detections
+p0.R <- rep(0.1,n.primary) #right-flank detections
 sigma <- rep(0.5,n.primary) #detection function spatial scale by primary occasion
 K <- rep(10,n.primary) #sampling occasions by primary occasion
 
@@ -200,7 +200,7 @@ Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 # Run the model.
 start.time2 <- Sys.time()
-Cmcmc$run(500,reset=FALSE) #can extend run by rerunning this line
+Cmcmc$run(2500,reset=FALSE) #can extend run by rerunning this line
 end.time <- Sys.time()
 time1 <- end.time-start.time  # total time for compilation, replacing samplers, and fitting
 time2 <- end.time-start.time2 # post-compilation run time
