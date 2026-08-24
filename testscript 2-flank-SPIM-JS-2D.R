@@ -180,6 +180,7 @@ for(i in 1:M){
 #optional truncated gamma poisson conjugate samplers. 
 #I would always use these as long as you keep uniform priors on lambda.y1 and gamma[g]
 #Typically gives you much greater ESS that propagates to N/N.recruit
+#Note: if you add time scaling to model file, need to include that in custom update
 conf$removeSamplers("lambda.y1")
 conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler)
 #if one gamma per primary occasion
