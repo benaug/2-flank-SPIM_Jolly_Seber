@@ -1202,7 +1202,7 @@ truncGammaPoisSampler <- nimbleFunction(
   setup = function(model,mvSaved,target,control){
     calcNodes <- model$getDependencies(target)
     upper <- model$getBound(target,"upper")
-    
+    tau <- control$tau
     if(target=="lambda.y1"){
       is.lambda <- TRUE
       is.fixed.gamma <- FALSE
@@ -1230,11 +1230,11 @@ truncGammaPoisSampler <- nimbleFunction(
       rate <- 0
       for(j in 1:n.recruit){
         count <- count+model$N.recruit[j]
-        rate <- rate+model$N[j]
+        rate <- rate+model$N[j]*tau[j]
       }
     }else{
       count <- model$N.recruit[g]
-      rate <- model$N[g]
+      rate <- model$N[g]*tau[g]
     }
     if(rate>0){
       shape <- count+1

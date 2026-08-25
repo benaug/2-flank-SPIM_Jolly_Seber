@@ -12,9 +12,9 @@ NimModel <- nimbleCode({
   #Recruitment
   gamma ~ dunif(0,2) #fixed recruitment parameter
   for(g in 1:(n.primary-1)){
-    ER[g] <- N[g]*gamma #expected recruits, if gamma fixed
+    ER[g] <- N[g]*gamma*tau[g] #expected recruits, if gamma fixed
     # gamma[g] ~ dunif(0,2) #recruitment priors by primary occasion
-    # ER[g] <- N[g]*gamma[g] #expected recruits, if gamma 
+    # ER[g] <- N[g]*gamma[g]*tau[g] #expected recruits, if gamma 
     N.recruit[g] ~ dpois(ER[g]) #realized recruits
   }
   
@@ -29,7 +29,7 @@ NimModel <- nimbleCode({
   phi.fixed ~ dunif(0,1)
   for(i in 1:M){
     for(g in 1:(n.primary-1)){ #plugging same individual phi's into each primary occasion for custom update
-      phi[i,g] <- phi.fixed #individual by primary occasion survival
+      phi[i,g] <- phi.fixed^tau[g] #individual by primary occasion survival
     }
     #survival likelihood (bernoulli) that only sums from z.start to z.stop
     z[i,1:n.primary] ~ dSurvival(phi=phi[i,1:(n.primary-1)],z.start=z.start[i],z.stop=z.stop[i],z.super=z.super[i])

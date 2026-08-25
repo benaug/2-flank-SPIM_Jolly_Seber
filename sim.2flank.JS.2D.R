@@ -4,7 +4,7 @@ e2dist <- function (x, y){
   matrix(dvec, nrow = nrow(x), ncol = nrow(y), byrow = F)
 }
 
-sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,
+sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,tau=NA,
                        phi=phi,p0.B=NA,p0.L=NA,p0.R=NA,sigma=NA,X=NA,buff=buff,K=NA,
                        K2D=NA,J.cams=NA,n.fixed=NA,sigma.move=NULL,seed=NULL){
   if(!is.null(seed)){
@@ -21,16 +21,18 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,
   z[1:N[1],1] <- 1
   for(g in 2:n.primary){
     #Simulate recruits
-    ER[g-1] <- N[g-1]*gamma[g-1]
+    ER[g-1] <- N[g-1]*gamma[g-1]*tau[g-1]
     N.recruit[g-1] <- rpois(1,ER[g-1])
-    #add recruits to z
-    z.dim.old <- nrow(z)
-    z <- rbind(z,matrix(0,nrow=N.recruit[g-1],ncol=n.primary))
-    z[(z.dim.old+1):(z.dim.old+N.recruit[g-1]),g] <- 1
-    
+    if(N.recruit[g-1]>0){
+      #add recruits to z
+      z.dim.old <- nrow(z)
+      z <- rbind(z,matrix(0,nrow=N.recruit[g-1],ncol=n.primary))
+      z[(z.dim.old+1):(z.dim.old+N.recruit[g-1]),g] <- 1
+    }
     #Simulate survival
+    phi.int <- phi[g-1]^tau[g-1]
     idx <- which(z[,g-1]==1)
-    z[idx,g] <- rbinom(length(idx),1,phi[g-1])
+    z[idx,g] <- rbinom(length(idx),1,phi.int)
     N.survive[g-1] <- sum(z[,g-1]==1&z[,g]==1)
     N[g] <- N.recruit[g-1]+N.survive[g-1]
   }
@@ -54,8 +56,9 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,
     s <- array(NA,dim=c(N.super,n.primary,2))
     s[,1,] <- cbind(runif(N.super, xlim[1],xlim[2]), runif(N.super,ylim[1],ylim[2]))
     for(g in 2:n.primary){
-      s[,g,1] <- rtruncnorm(N.super,s[,g-1,1],sd=sigma.move,a=xlim[1],b=xlim[2])
-      s[,g,2] <- rtruncnorm(N.super,s[,g-1,2],sd=sigma.move,a=ylim[1],b=ylim[2])
+      sigma.move.int <- sigma.move*sqrt(tau[g-1])
+      s[,g,1] <- rtruncnorm(N.super,s[,g-1,1],sd=sigma.move.int,a=xlim[1],b=xlim[2])
+      s[,g,2] <- rtruncnorm(N.super,s[,g-1,2],sd=sigma.move.int,a=ylim[1],b=ylim[2])
     }
   }else{
     print("simulating fixed ACs (provide sigma.move for mobile)")
@@ -137,7 +140,7 @@ sim.2flank.JS.2D <- function(lambda.y1=NA,gamma=NA,n.primary=NA,
   }
   
   out <-list(N=N,N.recruit=N.recruit,N.survive=N.survive,X=X,J=J,K=K,K2D=K2D,J.cams=J.cams,n.primary=n.primary,
-             xlim=xlim,ylim=ylim,y.B.obs=y.B.obs,y.L.obs=y.L.obs,y.R.obs=y.R.obs,
+             xlim=xlim,ylim=ylim,y.B.obs=y.B.obs,y.L.obs=y.L.obs,y.R.obs=y.R.obs,tau=tau,
              y.B=y.B,y.L=y.L,y.R=y.R,s=s,n=n,ID.B=ID.B,ID.L=ID.L,ID.R=ID.R,n.fixed=n.fixed,
              truth=truth,seed=seed)
   return(out)

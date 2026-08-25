@@ -20,6 +20,7 @@ nimbleOptions(determinePredictiveNodesInModel = FALSE)
 n.primary <- 5 #number of primary occasions
 lambda.y1 <- 50 #expected N in primary occasion 1
 gamma <- rep(0.6,n.primary-1) #per-capita recruitment by primary occasion
+tau <- rep(1,n.primary-1) #duration of each primary-occasion interval
 phi <- rep(0.5,n.primary-1) #survival by primary occasion, model file set up for fixed
 #detection probabilities at activity center by primary occasion. Model file set up for p0.L=p0.R
 p0.B <- rep(0.1,n.primary) #both-flank detections
@@ -54,7 +55,7 @@ for(g in 1:n.primary){
 # n.fixed <- 5 #minimum number of matched flanks for simulation
 n.fixed <- NA #supply NA for only n.B flank matches to be known (if there are any).
 #must supply this for simulation so we know to retain left and right known flank individuals with no captures
-data <- sim.2flank.JS.2D(lambda.y1=lambda.y1,gamma=gamma,n.primary=n.primary,
+data <- sim.2flank.JS.2D(lambda.y1=lambda.y1,gamma=gamma,n.primary=n.primary,tau=tau,
             phi=phi,p0.B=p0.B,p0.L=p0.L,p0.R=p0.R,sigma=sigma,X=X,buff=buff,
             K=K,K2D=K2D,J.cams=J.cams,n.fixed=n.fixed)
 #true N.super
@@ -73,7 +74,7 @@ nimbuild <- init.2flank.JS.2D(data=data,M=M,n.fixed=data$n.fixed,initTrue=FALSE)
 
 #constants for Nimble
 constants <- list(n.primary=data$n.primary,M=M,J=data$J,xlim=data$xlim,ylim=data$ylim,
-                  K2D=data$K2D,J.cams=data$J.cams,
+                  K2D=data$K2D,J.cams=data$J.cams,tau=data$tau,
                   n.L=nimbuild$n.L,n.R=nimbuild$n.R)
 #inits for Nimble. includes left and right flank histories that are partially or fully latent
 Niminits <- list(N=nimbuild$N,lambda.y1=nimbuild$N[1],
@@ -182,16 +183,16 @@ for(i in 1:M){
 #Typically gives you much greater ESS that propagates to N/N.recruit
 #Note: if you add time scaling to model file, need to include that in custom update
 conf$removeSamplers("lambda.y1")
-conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler)
+conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler,control=list(tau=data$tau))#add tau here to make nimble happy
 #if one gamma per primary occasion
 # for(g in 1:(n.primary-1)){
 #   target <- paste0("gamma[",g,"]")
 #   conf$removeSamplers(target)
-#   conf$addSampler(target=target,type=truncGammaPoisSampler)
+#   conf$addSampler(target=target,type=truncGammaPoisSampler,control=list(tau=data$tau))
 # }
-# #if gamma is fixed
+#if gamma is fixed
 conf$removeSamplers("gamma")
-conf$addSampler(target="gamma",type=truncGammaPoisSampler)
+conf$addSampler(target="gamma",type=truncGammaPoisSampler,control=list(tau = tau))
 
 # Build and compile
 Rmcmc <- buildMCMC(conf)
