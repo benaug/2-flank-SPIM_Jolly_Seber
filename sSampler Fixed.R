@@ -15,6 +15,43 @@ sSampler <- nimbleFunction(
     ## node list generation
     # targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
     calcNodes <- model$getDependencies(target)
+    
+    #old approach: calculate every dependency of s[i,] for every proposal
+    #calcNodes <- model$getDependencies(target)
+    
+    #group s[i,] dependencies by the primary occasion-specific z[i,g] they also depend on.
+    #Nodes associated with exactly one z[i,g] can be skipped when z[i,g]=0.
+    #Nodes associated with no z[i,g], or with more than one z[i,g], are always recalculated.
+    n.primary <- length(model$z[i,])
+    dep.count <- integer(length(calcNodes))
+    z.dep.nodes <- vector("list",n.primary)
+    for(g in 1:n.primary){
+      z.dep <- model$getDependencies(paste0("z[",i,",",g,"]"))
+      z.dep.nodes[[g]] <- calcNodes[calcNodes %in% z.dep]
+      if(length(z.dep.nodes[[g]])>0){
+        idx <- match(z.dep.nodes[[g]],calcNodes)
+        dep.count[idx] <- dep.count[idx]+1L
+      }
+    }
+    
+    #flatten occasion-local node lists for use in compiled run code
+    local.nodes <- character(0)
+    local.node.start <- integer(n.primary)
+    local.node.n <- integer(n.primary)
+    for(g in 1:n.primary){
+      these.nodes <- z.dep.nodes[[g]]
+      if(length(these.nodes)>0){
+        these.idx <- match(these.nodes,calcNodes)
+        these.nodes <- these.nodes[dep.count[these.idx]==1]
+      }
+      local.node.start[g] <- length(local.nodes)+1L
+      local.node.n[g] <- length(these.nodes)
+      if(length(these.nodes)>0){
+        local.nodes <- c(local.nodes,these.nodes)
+      }
+    }
+    other.nodes <- calcNodes[dep.count!=1]
+    
     # calcNodesNoSelf <- model$getDependencies(target, self = FALSE)
     # isStochCalcNodesNoSelf <- model$isStoch(calcNodesNoSelf)   ## should be made faster
     # calcNodesNoSelfDeterm <- calcNodesNoSelf[!isStochCalcNodesNoSelf]
@@ -42,15 +79,43 @@ sSampler <- nimbleFunction(
     z.super <- model$z.super[i]
     if(z.super==0){#propose from uniform prior
       model$s[i, 1:2] <<- c(runif(1, xlim[1], xlim[2]), runif(1, ylim[1], ylim[2]))
-      model$calculate(calcNodes)
-      copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+      
+      #old full-dependency calculation
+      #model$calculate(calcNodes)
+      model$calculate(other.nodes)
+      
+      #old full-dependency copy
+      #copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+      copy(from = model, to = mvSaved, row = 1, nodes = other.nodes, logProb = TRUE)
     }else{#MH
-      s.cand=c(rnorm(1,model$s[i,1],scale), rnorm(1,model$s[i,2],scale))
-      inbox= s.cand[1]< xlim[2] & s.cand[1]> xlim[1] & s.cand[2] < ylim[2] & s.cand[2] > ylim[1]
+      s.cand <- c(rnorm(1,model$s[i,1],scale), rnorm(1,model$s[i,2],scale))
+      inbox <- s.cand[1]< xlim[2] & s.cand[1]> xlim[1] & s.cand[2] < ylim[2] & s.cand[2] > ylim[1]
       if(inbox){
-        model_lp_initial <- model$getLogProb(calcNodes)
+        
+        #old full-dependency initial log probability
+        #model_lp_initial <- model$getLogProb(calcNodes)
+        model_lp_initial <- model$getLogProb(other.nodes)
+        for(g in 1:n.primary){
+          if(model$z[i,g]==1&local.node.n[g]>0){
+            node.start <- local.node.start[g]
+            node.end <- node.start+local.node.n[g]-1
+            model_lp_initial <- model_lp_initial+model$getLogProb(local.nodes[node.start:node.end])
+          }
+        }
+        
         model$s[i, 1:2] <<- s.cand
-        model_lp_proposed <- model$calculate(calcNodes)
+        
+        #old full-dependency proposed calculation
+        #model_lp_proposed <- model$calculate(calcNodes)
+        model_lp_proposed <- model$calculate(other.nodes)
+        for(g in 1:n.primary){
+          if(model$z[i,g]==1&local.node.n[g]>0){
+            node.start <- local.node.start[g]
+            node.end <- node.start+local.node.n[g]-1
+            model_lp_proposed <- model_lp_proposed+model$calculate(local.nodes[node.start:node.end])
+          }
+        }
+        
         log_MH_ratio <- model_lp_proposed - model_lp_initial
         accept <- decide(log_MH_ratio)
         if(accept) {
