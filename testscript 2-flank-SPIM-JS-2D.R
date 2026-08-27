@@ -24,7 +24,7 @@ tau <- rep(1,n.primary-1) #duration of each primary-occasion interval
 phi <- rep(0.5,n.primary-1) #survival by primary occasion, model file set up for fixed
 #detection probabilities at activity center by primary occasion. Model file set up for p0.L=p0.R
 p0.B <- rep(0.1,n.primary) #both-flank detections
-p0.L <- rep(0.05,n.primary) #left-flank detections
+p0.L <- rep(0.1,n.primary) #left-flank detections
 p0.R <- rep(0.1,n.primary) #right-flank detections
 sigma <- rep(0.5,n.primary) #detection function spatial scale by primary occasion
 K <- rep(10,n.primary) #sampling occasions by primary occasion
