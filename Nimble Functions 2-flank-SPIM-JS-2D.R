@@ -654,7 +654,13 @@ zSampler <- nimbleFunction(
           #get initial logProbs (survival logProb does not change)
           lp.initial.N <- model$getLogProb(N.nodes[1])
           lp.initial.N.recruit <- model$getLogProb(N.recruit.nodes)
-          lp.initial.y <- model$getLogProb(y.B.nodes[pick.idx]) + model$getLogProb(y.L.nodes[pick.idx]) + model$getLogProb(y.R.nodes[pick.idx])
+          #lp.initial.y <- model$getLogProb(y.B.nodes[pick.idx]) + model$getLogProb(y.L.nodes[pick.idx]) + model$getLogProb(y.R.nodes[pick.idx])
+          lp.initial.y <- 0
+          for(g2 in 1:n.primary){
+            if(z.curr[g2]==1){
+              lp.initial.y <- lp.initial.y+model$getLogProb(y.B.nodes[pick+(g2-1)*M])+model$getLogProb(y.L.nodes[pick+(g2-1)*M])+model$getLogProb(y.R.nodes[pick+(g2-1)*M])
+            }
+          }
           #lp.initial.surv <- model$getLogProb(z.nodes[pick]) #survival likelihood cancels exactly with reverse survival proposal probability
           #propose new N.super/z.super/z.start/z.stop
           model$N.super <<-  model$N.super - 1
@@ -672,10 +678,10 @@ zSampler <- nimbleFunction(
           #3) Update N.survive
           model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
           model$calculate(ER.nodes) #update ER when N updated
-          model$calculate(d2.nodes[pick.idx]) #update pd nodes when z changes
-          model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
-          model$calculate(pd.L.nodes[pick.idx]) #update pd nodes when z changes
-          model$calculate(pd.R.nodes[pick.idx]) #update pd nodes when z changes
+          #model$calculate(d2.nodes[pick.idx]) #update pd nodes when z changes
+          #model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
+          #model$calculate(pd.L.nodes[pick.idx]) #update pd nodes when z changes
+          #model$calculate(pd.R.nodes[pick.idx]) #update pd nodes when z changes
           #Reverse proposal probs
           recruit.probs.back <- c(model$lambda.y1, model$ER)
           recruit.probs.back <- recruit.probs.back / sum(recruit.probs.back)
@@ -689,7 +695,8 @@ zSampler <- nimbleFunction(
           #get proposed logProbs for N, N.recruit, and y
           lp.proposed.N <- model$calculate(N.nodes[1])
           lp.proposed.N.recruit <- model$calculate(N.recruit.nodes)
-          lp.proposed.y <- model$calculate(y.B.nodes[pick.idx]) + model$calculate(y.L.nodes[pick.idx]) + model$calculate(y.R.nodes[pick.idx]) #will always be 0
+          #lp.proposed.y <- model$calculate(y.B.nodes[pick.idx]) + model$calculate(y.L.nodes[pick.idx]) + model$calculate(y.R.nodes[pick.idx]) #will always be 0
+          lp.proposed.y <- 0 #will always be 0
           #lp.proposed.surv <- model$calculate(z.nodes[pick]) #survival likelihood cancels exactly with reverse survival proposal probability
           #survival target/proposal terms cancel exactly, so they are omitted from the MH totals
           #lp.initial.total <- lp.initial.N + lp.initial.y + lp.initial.N.recruit + lp.initial.surv
@@ -729,12 +736,29 @@ zSampler <- nimbleFunction(
             mvSaved["N.recruit",1] <<- model[["N.recruit"]]
             mvSaved["N.super",1][1] <<- model[["N.super"]]
             mvSaved["ER",1] <<- model[["ER"]]
+            #for(g2 in 1:n.primary){
+            #  for(j in 1:J[g2]){
+            #    mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
+            #    mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
+            #    mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
+            #    mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+            #  }
+            #}
             for(g2 in 1:n.primary){
-              for(j in 1:J[g2]){
-                mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
-                mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
-                mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
-                mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+              if(z.curr[g2]==1){
+                model$calculate(d2.nodes[pick+(g2-1)*M])
+                model$calculate(pd.B.nodes[pick+(g2-1)*M])
+                model$calculate(pd.L.nodes[pick+(g2-1)*M])
+                model$calculate(pd.R.nodes[pick+(g2-1)*M])
+                model$calculate(y.B.nodes[pick+(g2-1)*M])
+                model$calculate(y.L.nodes[pick+(g2-1)*M])
+                model$calculate(y.R.nodes[pick+(g2-1)*M])
+                for(j in 1:J[g2]){
+                  mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
+                  mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
+                  mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
+                  mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+                }
               }
             }
             entry.counts.curr <- entry.counts.prop
@@ -754,18 +778,18 @@ zSampler <- nimbleFunction(
             model[["N.recruit"]] <<- mvSaved["N.recruit",1]
             model[["N.super"]] <<- mvSaved["N.super",1][1]
             model[["ER"]] <<- mvSaved["ER",1]
-            for(g2 in 1:n.primary){
-              for(j in 1:J[g2]){
-                model[["d2"]][pick,g2,j] <<- mvSaved["d2",1][pick,g2,j]
-                model[["pd.B"]][pick,g2,j] <<- mvSaved["pd.B",1][pick,g2,j]
-                model[["pd.L"]][pick,g2,j] <<- mvSaved["pd.L",1][pick,g2,j]
-                model[["pd.R"]][pick,g2,j] <<- mvSaved["pd.R",1][pick,g2,j]
-              }
-            }
+            #for(g2 in 1:n.primary){
+            #  for(j in 1:J[g2]){
+            #    model[["d2"]][pick,g2,j] <<- mvSaved["d2",1][pick,g2,j]
+            #    model[["pd.B"]][pick,g2,j] <<- mvSaved["pd.B",1][pick,g2,j]
+            #    model[["pd.L"]][pick,g2,j] <<- mvSaved["pd.L",1][pick,g2,j]
+            #    model[["pd.R"]][pick,g2,j] <<- mvSaved["pd.R",1][pick,g2,j]
+            #  }
+            #}
             #set these logProbs back
-            model$calculate(y.B.nodes[pick.idx])
-            model$calculate(y.L.nodes[pick.idx])
-            model$calculate(y.R.nodes[pick.idx])
+            #model$calculate(y.B.nodes[pick.idx])
+            #model$calculate(y.L.nodes[pick.idx])
+            #model$calculate(y.R.nodes[pick.idx])
             #model$calculate(z.nodes[pick]) #not needed because survival logProb was never recalculated for the proposal
             model$calculate(N.nodes[1])
             model$calculate(N.recruit.nodes)
@@ -786,7 +810,8 @@ zSampler <- nimbleFunction(
             #get initial logProbs (survival logProb does not change)
             lp.initial.N <- model$getLogProb(N.nodes[1])
             lp.initial.N.recruit <- model$getLogProb(N.recruit.nodes)
-            lp.initial.y <- model$getLogProb(y.B.nodes[pick.idx]) + model$getLogProb(y.L.nodes[pick.idx]) + model$getLogProb(y.R.nodes[pick.idx]) #will always be 0
+            #lp.initial.y <- model$getLogProb(y.B.nodes[pick.idx]) + model$getLogProb(y.L.nodes[pick.idx]) + model$getLogProb(y.R.nodes[pick.idx]) #will always be 0
+            lp.initial.y <- 0 #will always be 0
             #lp.initial.surv <- model$getLogProb(z.nodes[pick]) #survival likelihood cancels exactly with forward survival proposal probability
             # Propose new z.start for the new on individual
             recruit.probs.for <- c(model$lambda.y1, model$ER)
@@ -820,14 +845,28 @@ zSampler <- nimbleFunction(
             #3) Update N.survive
             model$N.survive <<- model$N[2:n.primary] - model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
             model$calculate(ER.nodes) #update ER when N updated
-            model$calculate(d2.nodes[pick.idx]) #update pd nodes when z changes
-            model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
-            model$calculate(pd.L.nodes[pick.idx]) #update pd nodes when z changes
-            model$calculate(pd.R.nodes[pick.idx]) #update pd nodes when z changes
+            #model$calculate(d2.nodes[pick.idx]) #update pd nodes when z changes
+            #model$calculate(pd.B.nodes[pick.idx]) #update pd nodes when z changes
+            #model$calculate(pd.L.nodes[pick.idx]) #update pd nodes when z changes
+            #model$calculate(pd.R.nodes[pick.idx]) #update pd nodes when z changes
+            for(g2 in 1:n.primary){
+              if(model$z[pick,g2]==1){
+                model$calculate(d2.nodes[pick+(g2-1)*M])
+                model$calculate(pd.B.nodes[pick+(g2-1)*M])
+                model$calculate(pd.L.nodes[pick+(g2-1)*M])
+                model$calculate(pd.R.nodes[pick+(g2-1)*M])
+              }
+            }
             #get proposed logprobs for N and y
             lp.proposed.N <- model$calculate(N.nodes[1])
             lp.proposed.N.recruit <- model$calculate(N.recruit.nodes)
-            lp.proposed.y <- model$calculate(y.B.nodes[pick.idx]) + model$calculate(y.L.nodes[pick.idx]) + model$calculate(y.R.nodes[pick.idx])
+            #lp.proposed.y <- model$calculate(y.B.nodes[pick.idx]) + model$calculate(y.L.nodes[pick.idx]) + model$calculate(y.R.nodes[pick.idx])
+            lp.proposed.y <- 0
+            for(g2 in 1:n.primary){
+              if(model$z[pick,g2]==1){
+                lp.proposed.y <- lp.proposed.y+model$calculate(y.B.nodes[pick+(g2-1)*M])+model$calculate(y.L.nodes[pick+(g2-1)*M])+model$calculate(y.R.nodes[pick+(g2-1)*M])
+              }
+            }
             #lp.proposed.surv <- model$calculate(z.nodes[pick]) #survival likelihood cancels exactly with forward survival proposal probability
             #survival target/proposal terms cancel exactly, so they are omitted from the MH totals
             #lp.initial.total <- lp.initial.N + lp.initial.y + lp.initial.N.recruit + lp.initial.surv
@@ -867,12 +906,22 @@ zSampler <- nimbleFunction(
               mvSaved["N.recruit",1] <<- model[["N.recruit"]]
               mvSaved["N.super",1][1] <<- model[["N.super"]]
               mvSaved["ER",1] <<- model[["ER"]]
+              #for(g2 in 1:n.primary){
+              #  for(j in 1:J[g2]){
+              #    mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
+              #    mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
+              #    mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
+              #    mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+              #  }
+              #}
               for(g2 in 1:n.primary){
-                for(j in 1:J[g2]){
-                  mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
-                  mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
-                  mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
-                  mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+                if(model$z[pick,g2]==1){
+                  for(j in 1:J[g2]){
+                    mvSaved["d2",1][pick,g2,j] <<- model[["d2"]][pick,g2,j]
+                    mvSaved["pd.B",1][pick,g2,j] <<- model[["pd.B"]][pick,g2,j]
+                    mvSaved["pd.L",1][pick,g2,j] <<- model[["pd.L"]][pick,g2,j]
+                    mvSaved["pd.R",1][pick,g2,j] <<- model[["pd.R"]][pick,g2,j]
+                  }
                 }
               }
               entry.counts.curr <- entry.counts.prop
@@ -892,18 +941,35 @@ zSampler <- nimbleFunction(
               model[["N.recruit"]] <<- mvSaved["N.recruit",1]
               model[["N.super"]] <<- mvSaved["N.super",1][1]
               model[["ER"]] <<- mvSaved["ER",1]
+              #for(g2 in 1:n.primary){
+              #  for(j in 1:J[g2]){
+              #    model[["d2"]][pick,g2,j] <<- mvSaved["d2",1][pick,g2,j]
+              #    model[["pd.B"]][pick,g2,j] <<- mvSaved["pd.B",1][pick,g2,j]
+              #    model[["pd.L"]][pick,g2,j] <<- mvSaved["pd.L",1][pick,g2,j]
+              #    model[["pd.R"]][pick,g2,j] <<- mvSaved["pd.R",1][pick,g2,j]
+              #  }
+              #}
               for(g2 in 1:n.primary){
-                for(j in 1:J[g2]){
-                  model[["d2"]][pick,g2,j] <<- mvSaved["d2",1][pick,g2,j]
-                  model[["pd.B"]][pick,g2,j] <<- mvSaved["pd.B",1][pick,g2,j]
-                  model[["pd.L"]][pick,g2,j] <<- mvSaved["pd.L",1][pick,g2,j]
-                  model[["pd.R"]][pick,g2,j] <<- mvSaved["pd.R",1][pick,g2,j]
+                if(g2>=z.start.prop&g2<=z.stop.prop){
+                  for(j in 1:J[g2]){
+                    model[["d2"]][pick,g2,j] <<- mvSaved["d2",1][pick,g2,j]
+                    model[["pd.B"]][pick,g2,j] <<- mvSaved["pd.B",1][pick,g2,j]
+                    model[["pd.L"]][pick,g2,j] <<- mvSaved["pd.L",1][pick,g2,j]
+                    model[["pd.R"]][pick,g2,j] <<- mvSaved["pd.R",1][pick,g2,j]
+                  }
                 }
               }
               #set these logProbs back
-              model$calculate(y.B.nodes[pick.idx])
-              model$calculate(y.L.nodes[pick.idx])
-              model$calculate(y.R.nodes[pick.idx])
+              #model$calculate(y.B.nodes[pick.idx])
+              #model$calculate(y.L.nodes[pick.idx])
+              #model$calculate(y.R.nodes[pick.idx])
+              for(g2 in 1:n.primary){
+                if(g2>=z.start.prop&g2<=z.stop.prop){
+                  model$calculate(y.B.nodes[pick+(g2-1)*M])
+                  model$calculate(y.L.nodes[pick+(g2-1)*M])
+                  model$calculate(y.R.nodes[pick+(g2-1)*M])
+                }
+              }
               #model$calculate(z.nodes[pick]) #not needed because survival logProb was never recalculated for the proposal
               model$calculate(N.nodes[1])
               model$calculate(N.recruit.nodes)
