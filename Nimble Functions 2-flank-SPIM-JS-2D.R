@@ -505,10 +505,14 @@ zSampler <- nimbleFunction(
         }
         #if the proposed history is the current history, there is nothing to calculate or update
         if(z.start.prop!=z.start.curr|z.stop.prop!=z.stop.curr){
+          #primary occasions where the proposed alive state differs from current
+          z.changed <- which(z.prop!=z.curr)
+          y.idx.changed <- i.idx[z.changed]
           #get initial logProbs
           lp.initial.entry <- model$getLogProb(N.nodes[1])
           lp.initial.entry <- lp.initial.entry + model$getLogProb(N.recruit.nodes)
-          lp.initial.y <- model$getLogProb(y.B.nodes[i.idx]) + model$getLogProb(y.L.nodes[i.idx]) + model$getLogProb(y.R.nodes[i.idx])
+          #only observation likelihoods in primary occasions where z changed
+          lp.initial.y <- model$getLogProb(y.B.nodes[y.idx.changed]) + model$getLogProb(y.L.nodes[y.idx.changed]) + model$getLogProb(y.R.nodes[y.idx.changed])
           #lp.initial.surv <- model$getLogProb(z.nodes[i]) #cancels exactly with backwards survival proposal probability
           #log.prior.curr <- - (lgamma(M+1) - sum(lgamma(entry.counts.curr + 1))) #full multinomial coefficient calculation replaced by exact ratio below
           model$z[i,] <<- z.prop
@@ -527,14 +531,16 @@ zSampler <- nimbleFunction(
           #3) Update N.survive
           model$N.survive <<- model$N[2:n.primary]-model$N.recruit #survivors are guys alive in primary occasion g-1 minus recruits in this primary occasion g
           model$calculate(ER.nodes) #update ER when N updated
-          model$calculate(d2.nodes[i.idx]) #update pd nodes when z changes
-          model$calculate(pd.B.nodes[i.idx]) #update pd nodes when z changes
-          model$calculate(pd.L.nodes[i.idx]) #update pd nodes when z changes
-          model$calculate(pd.R.nodes[i.idx]) #update pd nodes when z changes
+          #only d2 and pd nodes in primary occasions where z changed
+          model$calculate(d2.nodes[y.idx.changed])
+          model$calculate(pd.B.nodes[y.idx.changed])
+          model$calculate(pd.L.nodes[y.idx.changed])
+          model$calculate(pd.R.nodes[y.idx.changed])
           #get proposed logProbs
           lp.proposed.entry <- model$calculate(N.nodes[1])
           lp.proposed.entry <- lp.proposed.entry + model$calculate(N.recruit.nodes)
-          lp.proposed.y <- model$calculate(y.B.nodes[i.idx]) + model$calculate(y.L.nodes[i.idx]) + model$calculate(y.R.nodes[i.idx])
+          #only observation likelihoods in primary occasions where z changed
+          lp.proposed.y <- model$calculate(y.B.nodes[y.idx.changed]) + model$calculate(y.L.nodes[y.idx.changed]) + model$calculate(y.R.nodes[y.idx.changed])
           #lp.proposed.surv <- model$calculate(z.nodes[i]) #cancels exactly with forwards survival proposal probability
           # Full multinomial coefficient prior for proposed configuration
           entry.counts.prop <- entry.counts.curr
@@ -570,7 +576,9 @@ zSampler <- nimbleFunction(
             mvSaved["N.survive",1] <<- model[["N.survive"]]
             mvSaved["N.recruit",1] <<- model[["N.recruit"]]
             mvSaved["ER",1] <<- model[["ER"]]
-            for(g2 in 1:n.primary){
+            #only d2 and pd nodes in changed primary occasions need to be saved
+            for(g3 in 1:length(z.changed)){
+              g2 <- z.changed[g3]
               for(j in 1:J[g2]){
                 mvSaved["d2",1][i,g2,j] <<- model[["d2"]][i,g2,j]
                 mvSaved["pd.B",1][i,g2,j] <<- model[["pd.B"]][i,g2,j]
@@ -587,7 +595,9 @@ zSampler <- nimbleFunction(
             model[["N.survive"]] <<- mvSaved["N.survive",1]
             model[["N.recruit"]] <<- mvSaved["N.recruit",1]
             model[["ER"]] <<- mvSaved["ER",1]
-            for(g2 in 1:n.primary){
+            #restore d2 and pd nodes only in primary occasions where z changed
+            for(g3 in 1:length(z.changed)){
+              g2 <- z.changed[g3]
               for(j in 1:J[g2]){
                 model[["d2"]][i,g2,j] <<- mvSaved["d2",1][i,g2,j]
                 model[["pd.B"]][i,g2,j] <<- mvSaved["pd.B",1][i,g2,j]
@@ -596,9 +606,10 @@ zSampler <- nimbleFunction(
               }
             }
             #set these logProbs back
-            model$calculate(y.B.nodes[i.idx])
-            model$calculate(y.L.nodes[i.idx])
-            model$calculate(y.R.nodes[i.idx])
+            #only observation logProbs in primary occasions where z changed need restoration
+            model$calculate(y.B.nodes[y.idx.changed])
+            model$calculate(y.L.nodes[y.idx.changed])
+            model$calculate(y.R.nodes[y.idx.changed])
             model$calculate(N.nodes[1])
             model$calculate(N.recruit.nodes)
             #model$calculate(z.nodes[i]) #not needed because survival logProb was never recalculated for the proposal
