@@ -73,8 +73,9 @@ M <- 300 #data augmentation level. Check N.super posterior to make sure it never
 nimbuild <- init.2flank.JS.2D(data=data,M=M,n.fixed=data$n.fixed,initTrue=FALSE)
 
 #constants for Nimble
+tau <- data$tau
 constants <- list(n.primary=data$n.primary,M=M,J=data$J,xlim=data$xlim,ylim=data$ylim,
-                  K2D=data$K2D,J.cams=data$J.cams,tau=data$tau,
+                  K2D=data$K2D,J.cams=data$J.cams,tau=tau,
                   n.L=nimbuild$n.L,n.R=nimbuild$n.R)
 #inits for Nimble. includes left and right flank histories that are partially or fully latent
 Niminits <- list(N=nimbuild$N,lambda.y1=nimbuild$N[1],
@@ -183,16 +184,16 @@ for(i in 1:M){
 #Typically gives you much greater ESS that propagates to N/N.recruit
 #Note: if you add time scaling to model file, need to include that in custom update
 conf$removeSamplers("lambda.y1")
-conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler,control=list(tau=data$tau))#add tau here to make nimble happy
+conf$addSampler(target="lambda.y1",type=truncGammaPoisSampler,control=list(tau=tau))#add tau here to make nimble happy
 #if one gamma per primary occasion
 # for(g in 1:(n.primary-1)){
 #   target <- paste0("gamma[",g,"]")
 #   conf$removeSamplers(target)
-#   conf$addSampler(target=target,type=truncGammaPoisSampler,control=list(tau=data$tau))
+#   conf$addSampler(target=target,type=truncGammaPoisSampler,control=list(tau=tau))
 # }
 #if gamma is fixed
 conf$removeSamplers("gamma")
-conf$addSampler(target="gamma",type=truncGammaPoisSampler,control=list(tau = tau))
+conf$addSampler(target="gamma",type=truncGammaPoisSampler,control=list(tau=tau))
 
 # Build and compile
 Rmcmc <- buildMCMC(conf)
