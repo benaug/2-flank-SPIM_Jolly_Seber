@@ -3,6 +3,8 @@ sSampler <- nimbleFunction(
   contains = sampler_BASE,
   setup = function(model, mvSaved, target, control) {
     i <- control$i
+    J <- control$J
+    n.primary <- control$n.primary
     xlim <- control$xlim
     ylim <- control$ylim
     ## control list extraction
@@ -12,50 +14,25 @@ sSampler <- nimbleFunction(
     adaptInterval       <- extractControlElement(control, 'adaptInterval',       200)
     adaptFactorExponent <- extractControlElement(control, 'adaptFactorExponent', 0.8)
     scale               <- extractControlElement(control, 'scale',               1)
+    
     ## node list generation
-    # targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
-    calcNodes <- model$getDependencies(target)
+    #s prior nodes
+    s.nodes <- model$expandNodeNames(paste0("s[",i,",1:2]"))
     
-    #old approach: calculate every dependency of s[i,] for every proposal
-    #calcNodes <- model$getDependencies(target)
-    
-    #group s[i,] dependencies by the primary occasion-specific z[i,g] they also depend on.
-    #Nodes associated with exactly one z[i,g] can be skipped when z[i,g]=0.
-    #Nodes associated with no z[i,g], or with more than one z[i,g], are always recalculated.
-    n.primary <- length(model$z[i,])
-    dep.count <- integer(length(calcNodes))
-    z.dep.nodes <- vector("list",n.primary)
-    for(g in 1:n.primary){
-      z.dep <- model$getDependencies(paste0("z[",i,",",g,"]"))
-      z.dep.nodes[[g]] <- calcNodes[calcNodes %in% z.dep]
-      if(length(z.dep.nodes[[g]])>0){
-        idx <- match(z.dep.nodes[[g]],calcNodes)
-        dep.count[idx] <- dep.count[idx]+1L
-      }
+    #occasion-specific detection nodes
+    d2.nodes <- pd.B.nodes <- pd.L.nodes <- pd.R.nodes <- character(0)
+    y.B.nodes <- y.L.nodes <- y.R.nodes <- character(0)
+    for(g.setup in 1:n.primary){
+      d2.nodes <- c(d2.nodes,model$expandNodeNames(paste0("d2[",i,",",g.setup,",1:",J[g.setup],"]")))
+      pd.B.nodes <- c(pd.B.nodes,model$expandNodeNames(paste0("pd.B[",i,",",g.setup,",1:",J[g.setup],"]")))
+      pd.L.nodes <- c(pd.L.nodes,model$expandNodeNames(paste0("pd.L[",i,",",g.setup,",1:",J[g.setup],"]")))
+      pd.R.nodes <- c(pd.R.nodes,model$expandNodeNames(paste0("pd.R[",i,",",g.setup,",1:",J[g.setup],"]")))
+      y.B.nodes <- c(y.B.nodes,model$expandNodeNames(paste0("y.B.true[",i,",",g.setup,",1:",J[g.setup],"]")))
+      y.L.nodes <- c(y.L.nodes,model$expandNodeNames(paste0("y.L.true[",i,",",g.setup,",1:",J[g.setup],"]")))
+      y.R.nodes <- c(y.R.nodes,model$expandNodeNames(paste0("y.R.true[",i,",",g.setup,",1:",J[g.setup],"]")))
     }
+    calcNodes <- c(s.nodes,d2.nodes,pd.B.nodes,pd.L.nodes,pd.R.nodes,y.B.nodes,y.L.nodes,y.R.nodes)
     
-    #flatten occasion-local node lists for use in compiled run code
-    local.nodes <- character(0)
-    local.node.start <- integer(n.primary)
-    local.node.n <- integer(n.primary)
-    for(g in 1:n.primary){
-      these.nodes <- z.dep.nodes[[g]]
-      if(length(these.nodes)>0){
-        these.idx <- match(these.nodes,calcNodes)
-        these.nodes <- these.nodes[dep.count[these.idx]==1]
-      }
-      local.node.start[g] <- length(local.nodes)+1L
-      local.node.n[g] <- length(these.nodes)
-      if(length(these.nodes)>0){
-        local.nodes <- c(local.nodes,these.nodes)
-      }
-    }
-    other.nodes <- calcNodes[dep.count!=1]
-    
-    # calcNodesNoSelf <- model$getDependencies(target, self = FALSE)
-    # isStochCalcNodesNoSelf <- model$isStoch(calcNodesNoSelf)   ## should be made faster
-    # calcNodesNoSelfDeterm <- calcNodesNoSelf[!isStochCalcNodesNoSelf]
-    # calcNodesNoSelfStoch <- calcNodesNoSelf[isStochCalcNodesNoSelf]
     ## numeric value generation
     scaleOriginal <- scale
     timesRan      <- 0
@@ -78,45 +55,36 @@ sSampler <- nimbleFunction(
   run = function() {
     z.super <- model$z.super[i]
     if(z.super==0){#propose from uniform prior
-      model$s[i, 1:2] <<- c(runif(1, xlim[1], xlim[2]), runif(1, ylim[1], ylim[2]))
-      
-      #old full-dependency calculation
-      #model$calculate(calcNodes)
-      model$calculate(other.nodes)
-      
-      #old full-dependency copy
-      #copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
-      copy(from = model, to = mvSaved, row = 1, nodes = other.nodes, logProb = TRUE)
+      model$s[i,1:2] <<- c(runif(1,xlim[1],xlim[2]),runif(1,ylim[1],ylim[2]))
+      model$calculate(s.nodes)
+      copy(from = model, to = mvSaved, row = 1, nodes = s.nodes, logProb = TRUE)
     }else{#MH
-      s.cand <- c(rnorm(1,model$s[i,1],scale), rnorm(1,model$s[i,2],scale))
-      inbox <- s.cand[1]< xlim[2] & s.cand[1]> xlim[1] & s.cand[2] < ylim[2] & s.cand[2] > ylim[1]
+      s.cand <- c(rnorm(1,model$s[i,1],scale),rnorm(1,model$s[i,2],scale))
+      inbox <- s.cand[1]<xlim[2]&s.cand[1]>xlim[1]&s.cand[2]<ylim[2]&s.cand[2]>ylim[1]
       if(inbox){
+        #initial log probability: s prior plus observation likelihoods while alive
+        lp.initial <- model$getLogProb(s.nodes)
+        for(g.use in 1:n.primary){
+          if(model$z[i,g.use]==1){
+            lp.initial <- lp.initial+model$getLogProb(y.B.nodes[g.use])+model$getLogProb(y.L.nodes[g.use])+model$getLogProb(y.R.nodes[g.use])
+          }
+        }
+        #propose activity center
+        model$s[i,1:2] <<- s.cand
+        lp.proposed <- model$calculate(s.nodes)
         
-        #old full-dependency initial log probability
-        #model_lp_initial <- model$getLogProb(calcNodes)
-        model_lp_initial <- model$getLogProb(other.nodes)
-        for(g in 1:n.primary){
-          if(model$z[i,g]==1&local.node.n[g]>0){
-            node.start <- local.node.start[g]
-            node.end <- node.start+local.node.n[g]-1
-            model_lp_initial <- model_lp_initial+model$getLogProb(local.nodes[node.start:node.end])
+        #only detection terms in primary occasions where the individual is alive can change
+        for(g.use in 1:n.primary){
+          if(model$z[i,g.use]==1){
+            model$calculate(d2.nodes[g.use])
+            model$calculate(pd.B.nodes[g.use])
+            model$calculate(pd.L.nodes[g.use])
+            model$calculate(pd.R.nodes[g.use])
+            lp.proposed <- lp.proposed+model$calculate(y.B.nodes[g.use])+model$calculate(y.L.nodes[g.use])+model$calculate(y.R.nodes[g.use])
           }
         }
         
-        model$s[i, 1:2] <<- s.cand
-        
-        #old full-dependency proposed calculation
-        #model_lp_proposed <- model$calculate(calcNodes)
-        model_lp_proposed <- model$calculate(other.nodes)
-        for(g in 1:n.primary){
-          if(model$z[i,g]==1&local.node.n[g]>0){
-            node.start <- local.node.start[g]
-            node.end <- node.start+local.node.n[g]-1
-            model_lp_proposed <- model_lp_proposed+model$calculate(local.nodes[node.start:node.end])
-          }
-        }
-        
-        log_MH_ratio <- model_lp_proposed - model_lp_initial
+        log_MH_ratio <- lp.proposed-lp.initial
         accept <- decide(log_MH_ratio)
         if(accept) {
           copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)

@@ -175,8 +175,8 @@ conf$addSampler(target = paste0("y.R.true[1:",M,",1:",data$n.primary,",1:",J.max
 # conf$removeSampler(paste0("s[1:",M,", 1:2]")) #dont need to remove if not assigned by nimble
 for(i in 1:M){
   conf$addSampler(target = paste0("s[",i,", 1:2]"),
-                  type = 'sSampler',control=list(i=i,xlim=data$xlim,ylim=data$ylim,scale=1),silent = TRUE)
-  #scale parameter here is just the starting scale. It will be tuned.
+                  type = 'sSampler',control=list(i=i,J=data$J,n.primary=data$n.primary,
+                                                 xlim=data$xlim,ylim=data$ylim),silent = TRUE)
 }
 
 #optional truncated gamma poisson conjugate samplers. 
